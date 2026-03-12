@@ -48,8 +48,8 @@ import argparse
 import csv
 import json
 import sys
-import urllib.request
 import urllib.error
+import urllib.request
 
 
 def send_injections(base_url: str, injections: list[dict]):
@@ -90,7 +90,9 @@ def list_overrides(base_url: str):
             print(f"{'TAGNAME':<50} {'VALUE':<15} {'ACTIVE':<8} {'PENDING':<8} {'REMAINING_S':<12}")
             print("-" * 95)
             for o in overrides:
-                print(f"{o['tagname']:<50} {str(o['value']):<15} {str(o['active']):<8} {str(o['pending']):<8} {o['remaining_s']:<12}")
+                print(
+                    f"{o['tagname']:<50} {str(o['value']):<15} {str(o['active']):<8} {str(o['pending']):<8} {o['remaining_s']:<12}"
+                )
     except urllib.error.HTTPError as e:
         print(f"Error {e.code}: {e.read().decode()}", file=sys.stderr)
         sys.exit(1)
@@ -118,17 +120,17 @@ def clear_overrides(base_url: str):
 def load_file(path: str) -> list[dict]:
     """Load injections from a CSV or JSON file."""
     if path.lower().endswith(".json"):
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
             if isinstance(data, dict) and "injections" in data:
                 return data["injections"]
             if isinstance(data, list):
                 return data
-            raise ValueError("JSON must be an array or {\"injections\": [...]}")
+            raise ValueError('JSON must be an array or {"injections": [...]}')
 
     # Treat as CSV
     items = []
-    with open(path, "r", encoding="utf-8-sig") as f:
+    with open(path, encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         for row in reader:
             item = {
@@ -163,22 +165,34 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    ap.add_argument("--url", default="http://localhost:8080",
-                    help="Base URL of the replay server injection API (default: http://localhost:8080)")
+    ap.add_argument(
+        "--url",
+        default="http://localhost:8080",
+        help="Base URL of the replay server injection API (default: http://localhost:8080)",
+    )
 
     group = ap.add_mutually_exclusive_group(required=True)
-    group.add_argument("--tag", help="Tag name (NodeId) to inject, e.g. 'ns=2;s=PET001.Temperature'")
+    group.add_argument(
+        "--tag", help="Tag name (NodeId) to inject, e.g. 'ns=2;s=PET001.Temperature'"
+    )
     group.add_argument("--file", help="Path to a CSV or JSON file with multiple injections")
     group.add_argument("--list", action="store_true", help="List active and pending overrides")
     group.add_argument("--clear", action="store_true", help="Clear all overrides")
 
     ap.add_argument("--value", help="Value to set (required with --tag)")
-    ap.add_argument("--offset", type=float, default=0,
-                    help="Seconds before the override activates (default: 0 = immediate)")
-    ap.add_argument("--duration", type=float, default=60,
-                    help="Seconds to maintain the override (default: 60)")
-    ap.add_argument("--dtype",
-                    help="Optional OPC UA data type hint, e.g. Float, Int32, Boolean (default: inferred from value type)")
+    ap.add_argument(
+        "--offset",
+        type=float,
+        default=0,
+        help="Seconds before the override activates (default: 0 = immediate)",
+    )
+    ap.add_argument(
+        "--duration", type=float, default=60, help="Seconds to maintain the override (default: 60)"
+    )
+    ap.add_argument(
+        "--dtype",
+        help="Optional OPC UA data type hint, e.g. Float, Int32, Boolean (default: inferred from value type)",
+    )
 
     args = ap.parse_args()
 
@@ -193,13 +207,15 @@ def main():
     if args.tag:
         if args.value is None:
             ap.error("--value is required when using --tag")
-        injections = [{
-            "tagname": args.tag,
-            "value": _try_number(args.value),
-            "time_offset_s": args.offset,
-            "duration_s": args.duration,
-            **({"dtype": args.dtype} if args.dtype else {}),
-        }]
+        injections = [
+            {
+                "tagname": args.tag,
+                "value": _try_number(args.value),
+                "time_offset_s": args.offset,
+                "duration_s": args.duration,
+                **({"dtype": args.dtype} if args.dtype else {}),
+            }
+        ]
         send_injections(args.url, injections)
         return
 

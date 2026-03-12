@@ -8,7 +8,7 @@ import io
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import Mock, MagicMock
+from unittest.mock import MagicMock, Mock
 
 import pandas as pd
 import pytest
@@ -118,26 +118,26 @@ def mock_opcua_node():
 def mock_opcua_server():
     """Create a mock OPC UA server with basic operations."""
     server = Mock()
-    
+
     # Mock namespace operations
     server.get_namespace_array = Mock(
         return_value=["http://opcfoundation.org/UA/", "urn:example:namespace"]
     )
     server.register_namespace = Mock(return_value=2)
-    
+
     # Mock node operations
     mock_node = Mock()
     mock_node.get_value = Mock(return_value=0.0)
     mock_node.set_value = Mock()
     server.get_node = Mock(return_value=mock_node)
-    
+
     # Mock server lifecycle
     server.start = Mock()
     server.stop = Mock()
-    
+
     # Mock import operations
     server.import_xml = Mock()
-    
+
     return server
 
 
@@ -148,10 +148,10 @@ def mock_time(mocker):
     Returns a function to advance time.
     """
     current_time = [1000000.0]  # Use list to allow mutation in closure
-    
+
     def advance_time(seconds):
         current_time[0] += seconds
-    
+
     mocker.patch("time.time", side_effect=lambda: current_time[0])
     return advance_time
 
@@ -160,6 +160,7 @@ def mock_time(mocker):
 def override_store():
     """Create a fresh OverrideStore instance for testing."""
     from opc_replay.server import OverrideStore
+
     return OverrideStore()
 
 

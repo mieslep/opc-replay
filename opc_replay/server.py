@@ -20,18 +20,18 @@ For detailed options, run: opc-replay --help
 """
 
 import argparse
-import time
+import json
+import os
 import re
 import tempfile
-import os
-import json
 import threading
+import time
 import xml.etree.ElementTree as ET
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pandas as pd
-from opcua import ua, Server
+from opcua import Server, ua
 
 # Map DATATYPE strings to python-opcua VariantTypes
 VARIANT_TYPE = {
@@ -74,7 +74,7 @@ def build_namespace_map(server, nodeset_path: str) -> dict[int, int]:
     # Parse the nodeset XML to get namespace URIs and their declared indices
     tree = ET.parse(nodeset_path)
     root = tree.getroot()
-    
+
     xml_namespaces = {}
     ns_uris_elem = root.find(".//ua:NamespaceUris", NS)
     if ns_uris_elem is not None:
@@ -82,10 +82,10 @@ def build_namespace_map(server, nodeset_path: str) -> dict[int, int]:
             uri = uri_elem.text
             if uri:
                 xml_namespaces[idx] = uri
-    
+
     # Get actual namespace array from server
     server_namespaces = server.get_namespace_array()
-    
+
     # Build mapping
     ns_map = {0: 0}  # ns=0 is always the same
     for xml_idx, uri in xml_namespaces.items():
@@ -95,12 +95,12 @@ def build_namespace_map(server, nodeset_path: str) -> dict[int, int]:
         except ValueError:
             # URI not found in server namespaces, keep original
             ns_map[xml_idx] = xml_idx
-    
+
     # Add identity mappings for indices that already match
     for i in range(len(server_namespaces)):
         if i not in ns_map:
             ns_map[i] = i
-    
+
     return ns_map
 
 
@@ -112,10 +112,10 @@ def remap_nodeid(nodeid: str, ns_map: dict[int, int]) -> str:
     match = re.match(r"^ns=(\d+);([isgb]=.+)$", nodeid)
     if not match:
         return nodeid
-    
+
     old_ns = int(match.group(1))
     identifier = match.group(2)
-    
+
     new_ns = ns_map.get(old_ns, old_ns)
     return f"ns={new_ns};{identifier}"
 
@@ -142,6 +142,7 @@ def cast_value(raw, dtype: str):
 # Tag-injection override store (thread-safe)
 # ---------------------------------------------------------------------------
 
+
 class OverrideStore:
     """
     Thread-safe store of tag overrides.
@@ -156,7 +157,9 @@ class OverrideStore:
         self._lock = threading.Lock()
         self._overrides: dict[str, list[dict]] = {}  # tagname -> [override, ...]
 
-    def add(self, tagname: str, value, time_offset_s: float, duration_s: float, dtype: str | None = None):
+    def add(
+        self, tagname: str, value, time_offset_s: float, duration_s: float, dtype: str | None = None
+    ):
         now = time.time()
         entry = {
             "tagname": tagname,
@@ -244,17 +247,19 @@ class OverrideStore:
         now = time.time()
         with self._lock:
             result = []
-            for tag, entries in self._overrides.items():
+            for _tag, entries in self._overrides.items():
                 for e in entries:
                     if e["expire_at"] <= now:
                         continue  # skip already-expired entries
-                    result.append({
-                        "tagname": e["tagname"],
-                        "value": e["value"],
-                        "remaining_s": round(e["expire_at"] - now, 2),
-                        "active": e["activate_at"] <= now,
-                        "pending": now < e["activate_at"],
-                    })
+                    result.append(
+                        {
+                            "tagname": e["tagname"],
+                            "value": e["value"],
+                            "remaining_s": round(e["expire_at"] - now, 2),
+                            "active": e["activate_at"] <= now,
+                            "pending": now < e["activate_at"],
+                        }
+                    )
             return result
 
     def clear(self):
@@ -265,6 +270,7 @@ class OverrideStore:
 # ---------------------------------------------------------------------------
 # HTTP API for tag injection
 # ---------------------------------------------------------------------------
+
 
 class InjectionHandler(BaseHTTPRequestHandler):
     """
@@ -344,13 +350,15 @@ class InjectionHandler(BaseHTTPRequestHandler):
                 results.append({"error": "Missing tagname"})
                 continue
             entry = self.override_store.add(tagname, value, time_offset_s, duration_s, dtype=dtype)
-            results.append({
-                "tagname": tagname,
-                "value": value,
-                "activate_at": datetime.fromtimestamp(entry["activate_at"], tz=timezone.utc).isoformat(),
-                "expire_at": datetime.fromtimestamp(entry["expire_at"], tz=timezone.utc).isoformat(),
-                "status": "scheduled",
-            })
+            results.append(
+                {
+                    "tagname": tagname,
+                    "value": value,
+                    "activate_at": datetime.fromtimestamp(entry["activate_at"], tz=UTC).isoformat(),
+                    "expire_at": datetime.fromtimestamp(entry["expire_at"], tz=UTC).isoformat(),
+                    "status": "scheduled",
+                }
+            )
 
         self._send_json({"results": results})
 
@@ -398,7 +406,7 @@ def run_override_applier(
                 if node is None:
                     node = server.get_node(remapped)
                     node_cache[remapped] = node
-                now = datetime.now(timezone.utc).replace(tzinfo=None)
+                now = datetime.now(UTC).replace(tzinfo=None)
                 dv = ua.DataValue(_infer_variant(entry["value"], entry.get("dtype")))
                 dv.SourceTimestamp = now
                 dv.ServerTimestamp = now
@@ -420,56 +428,62 @@ def start_injection_api(store: OverrideStore, port: int, quiet: bool = False):
     return httpd
 
 
-def load_and_prepare_data(data_path: str, ts_col: str, offset: float = 0.0, max_rows: int | None = None):
+def load_and_prepare_data(
+    data_path: str, ts_col: str, offset: float = 0.0, max_rows: int | None = None
+):
     """
     Load data from CSV or Parquet file and prepare for replay.
     Automatically detects file type and normalizes column names.
-    
+
     Expected columns (flexible naming):
     - TAGNAME or TAG_NAME: Node identifier
     - TAGVALUE or VALUE: Tag value
     - DATATYPE: OPC UA data type
     - Timestamp column specified by ts_col
-    
+
     Process order:
     1. Load data file
     2. Sort by timestamp
     3. Apply offset (skip first N seconds from start)
     4. Apply max_rows limit (take first N rows after offset)
-    
+
     Returns dataframe with normalized column names: TAGNAME, TAGVALUE, DATATYPE, and timestamp column.
     """
     # Detect file type and load
-    if data_path.lower().endswith('.parquet'):
+    if data_path.lower().endswith(".parquet"):
         df = pd.read_parquet(data_path)
-    elif data_path.lower().endswith('.csv'):
+    elif data_path.lower().endswith(".csv"):
         df = pd.read_csv(data_path, low_memory=False)
     else:
         raise ValueError(f"Unsupported file type. Must be .csv or .parquet: {data_path}")
-    
+
     # Normalize column names - support both formats
     column_mapping = {}
-    if 'TAG_NAME' in df.columns and 'TAGNAME' not in df.columns:
-        column_mapping['TAG_NAME'] = 'TAGNAME'
-    if 'VALUE' in df.columns and 'TAGVALUE' not in df.columns:
-        column_mapping['VALUE'] = 'TAGVALUE'
-    
+    if "TAG_NAME" in df.columns and "TAGNAME" not in df.columns:
+        column_mapping["TAG_NAME"] = "TAGNAME"
+    if "VALUE" in df.columns and "TAGVALUE" not in df.columns:
+        column_mapping["VALUE"] = "TAGVALUE"
+
     if column_mapping:
         df = df.rename(columns=column_mapping)
-    
+
     # Verify required columns exist
     required = {"TAGNAME", "TAGVALUE", "DATATYPE"}
     missing = required - set(df.columns)
     if missing:
-        raise ValueError(f"Data file is missing required columns: {sorted(missing)}. Available: {list(df.columns)}")
+        raise ValueError(
+            f"Data file is missing required columns: {sorted(missing)}. Available: {list(df.columns)}"
+        )
 
     if ts_col not in df.columns:
-        raise ValueError(f"Data file missing timestamp column '{ts_col}'. Available: {list(df.columns)}")
+        raise ValueError(
+            f"Data file missing timestamp column '{ts_col}'. Available: {list(df.columns)}"
+        )
 
     # Parse and sort by timestamp - CRITICAL for proper replay order
     df[ts_col] = pd.to_datetime(df[ts_col], errors="coerce", utc=True)
     df = df.dropna(subset=[ts_col]).sort_values(ts_col)
-    
+
     # Apply offset BEFORE max_rows
     if offset > 0:
         first_ts = df[ts_col].iloc[0]
@@ -477,7 +491,7 @@ def load_and_prepare_data(data_path: str, ts_col: str, offset: float = 0.0, max_
         df = df[df[ts_col] >= offset_ts].copy()
         if df.empty:
             raise ValueError(f"Offset of {offset}s exceeds data duration. No rows remain.")
-    
+
     # Apply max_rows limit AFTER offset
     if max_rows is not None:
         df = df.head(max_rows)
@@ -541,44 +555,90 @@ def drop_bad_nodeset_nodes(nodeset_in: str) -> tuple[str, int, int]:
 
 
 def main():
-    ap = argparse.ArgumentParser(description="OPC UA replay server supporting CSV and Parquet data files")
+    ap = argparse.ArgumentParser(
+        description="OPC UA replay server supporting CSV and Parquet data files"
+    )
     ap.add_argument("--endpoint", default="opc.tcp://0.0.0.0:4840/", help="OPC UA endpoint URL")
     ap.add_argument("--server-name", default="ReplayServer", help="Server name")
-    ap.add_argument("--nodeset", default=None, help="NodeSet2 XML file (optional if --auto-nodeset is used)")
-    ap.add_argument("--data", required=True, help="Data file (.csv or .parquet) with TAGNAME/TAG_NAME, TAGVALUE/VALUE, DATATYPE columns and timestamp column")
-    ap.add_argument("--csv", help="(Deprecated: use --data) CSV with TAGNAME,TAGVALUE,DATATYPE and timestamp column")
-    ap.add_argument("--ts-col", default="TS", help="Timestamp column name (default: TS, common: TIMESTAMP)")
-    ap.add_argument("--speed", type=float, default=1.0, help="Playback speedup (1=real-time, 10=10x faster)")
-    ap.add_argument("--offset", type=float, default=0.0, help="Skip ahead by N seconds from the first timestamp (e.g., 3600 skips first hour)")
+    ap.add_argument(
+        "--nodeset", default=None, help="NodeSet2 XML file (optional if --auto-nodeset is used)"
+    )
+    ap.add_argument(
+        "--data",
+        required=True,
+        help="Data file (.csv or .parquet) with TAGNAME/TAG_NAME, TAGVALUE/VALUE, DATATYPE columns and timestamp column",
+    )
+    ap.add_argument(
+        "--csv",
+        help="(Deprecated: use --data) CSV with TAGNAME,TAGVALUE,DATATYPE and timestamp column",
+    )
+    ap.add_argument(
+        "--ts-col", default="TS", help="Timestamp column name (default: TS, common: TIMESTAMP)"
+    )
+    ap.add_argument(
+        "--speed", type=float, default=1.0, help="Playback speedup (1=real-time, 10=10x faster)"
+    )
+    ap.add_argument(
+        "--offset",
+        type=float,
+        default=0.0,
+        help="Skip ahead by N seconds from the first timestamp (e.g., 3600 skips first hour)",
+    )
     ap.add_argument("--loop", action="store_true", help="Loop playback forever")
-    ap.add_argument("--max-rows", type=int, default=None, help="Limit number of rows for quick testing")
-    ap.add_argument("--warmup", type=float, default=0.0, help="Seconds to wait before replay begins")
+    ap.add_argument(
+        "--max-rows", type=int, default=None, help="Limit number of rows for quick testing"
+    )
+    ap.add_argument(
+        "--warmup", type=float, default=0.0, help="Seconds to wait before replay begins"
+    )
     ap.add_argument("--quiet", action="store_true", help="Reduce per-update logging")
 
     # NodeSet auto-generation:
-    ap.add_argument("--auto-nodeset", action="store_true",
-                    help="Auto-generate NodeSet from data file (extracts unique TAGNAME+DATATYPE). Saves generated NodeSet for reuse.")
-    ap.add_argument("--root-name", default=None,
-                    help="Root object name for auto-generated NodeSet (default: derived from data filename)")
-    ap.add_argument("--namespace-uri", default=None,
-                    help="Namespace URI for auto-generated NodeSet (default: urn:<root-name>:tags)")
+    ap.add_argument(
+        "--auto-nodeset",
+        action="store_true",
+        help="Auto-generate NodeSet from data file (extracts unique TAGNAME+DATATYPE). Saves generated NodeSet for reuse.",
+    )
+    ap.add_argument(
+        "--root-name",
+        default=None,
+        help="Root object name for auto-generated NodeSet (default: derived from data filename)",
+    )
+    ap.add_argument(
+        "--namespace-uri",
+        default=None,
+        help="Namespace URI for auto-generated NodeSet (default: urn:<root-name>:tags)",
+    )
 
     # New "skip, don't fix" behaviors:
-    ap.add_argument("--drop-bad-nodeset-nodeids", action="store_true",
-                    help="Drop nodes from the imported NodeSet that have non-canonical NodeIds (prevents import crash).")
-    ap.add_argument("--skip-bad-csv", action="store_true",
-                    help="Skip/log data rows with non-canonical TAGNAMEs, or writes that fail (BadNodeIdUnknown, etc.).")
-    
+    ap.add_argument(
+        "--drop-bad-nodeset-nodeids",
+        action="store_true",
+        help="Drop nodes from the imported NodeSet that have non-canonical NodeIds (prevents import crash).",
+    )
+    ap.add_argument(
+        "--skip-bad-csv",
+        action="store_true",
+        help="Skip/log data rows with non-canonical TAGNAMEs, or writes that fail (BadNodeIdUnknown, etc.).",
+    )
+
     # Namespace mapping control:
-    ap.add_argument("--allow-ns-mismatch", action="store_true",
-                    help="Allow namespace index mismatch between data file and server. Automatically maps data namespace indices to server indices. Use this when nodeset was generated with different --namespace-index than data file.")
+    ap.add_argument(
+        "--allow-ns-mismatch",
+        action="store_true",
+        help="Allow namespace index mismatch between data file and server. Automatically maps data namespace indices to server indices. Use this when nodeset was generated with different --namespace-index than data file.",
+    )
 
     # Injection API:
-    ap.add_argument("--api-port", type=int, default=8080,
-                    help="HTTP port for the tag-injection REST API (default: 8080, 0 to disable)")
+    ap.add_argument(
+        "--api-port",
+        type=int,
+        default=8080,
+        help="HTTP port for the tag-injection REST API (default: 8080, 0 to disable)",
+    )
 
     args = ap.parse_args()
-    
+
     # Support legacy --csv argument
     data_file = args.data if args.data else args.csv
     if not data_file:
@@ -595,40 +655,41 @@ def main():
     df = load_and_prepare_data(data_file, args.ts_col, offset=args.offset, max_rows=args.max_rows)
     if df.empty:
         raise ValueError("No valid rows found after parsing timestamps.")
-    
+
     if not args.quiet:
         print(f"[Data] Loaded {len(df)} rows from {data_file}")
         if args.offset > 0:
             print(f"[Data] Offset: Skipped first {args.offset}s")
         print(f"[Data] Time range: {df[args.ts_col].min()} to {df[args.ts_col].max()}")
         duration = (df[args.ts_col].max() - df[args.ts_col].min()).total_seconds()
-        print(f"[Data] Duration: {duration:.1f}s ({duration/60:.1f} min)")
+        print(f"[Data] Duration: {duration:.1f}s ({duration / 60:.1f} min)")
         print(f"[Data] Unique tags: {df['TAGNAME'].nunique()}")
 
     # Auto-generate NodeSet if requested
     if args.auto_nodeset:
         # Import here to avoid circular dependency
         from .to_nodeset import generate_nodeset_from_dataframe
-        
+
         # Determine root name
         if args.root_name:
             root_name = args.root_name
         else:
             # Derive from filename
             import os
+
             basename = os.path.basename(data_file)
             root_name = os.path.splitext(basename)[0].replace("-", "_").replace(" ", "_")
-        
+
         # Generate output path
         data_dir = os.path.dirname(os.path.abspath(data_file))
         auto_nodeset_path = os.path.join(data_dir, f"{root_name}_auto_nodeset.xml")
-        
+
         if not args.quiet:
             print(f"[Auto-NodeSet] Generating from {len(df['TAGNAME'].unique())} unique tags...")
-        
+
         # Extract unique tag definitions from data
-        tag_defs = df[['TAGNAME', 'DATATYPE', 'TAGVALUE']].drop_duplicates(subset=['TAGNAME'])
-        
+        tag_defs = df[["TAGNAME", "DATATYPE", "TAGVALUE"]].drop_duplicates(subset=["TAGNAME"])
+
         # Generate NodeSet XML
         xml_content = generate_nodeset_from_dataframe(
             df=tag_defs,
@@ -638,21 +699,23 @@ def main():
             split_regex=r"\.",
             no_folders=False,
         )
-        
+
         # Save to file
         with open(auto_nodeset_path, "w", encoding="utf-8") as f:
             f.write(xml_content)
-        
+
         if not args.quiet:
             print(f"[Auto-NodeSet] ✓ Generated: {auto_nodeset_path}")
-            print(f"[Auto-NodeSet] Tip: Reuse with --nodeset {auto_nodeset_path} for faster startup")
-        
+            print(
+                f"[Auto-NodeSet] Tip: Reuse with --nodeset {auto_nodeset_path} for faster startup"
+            )
+
         args.nodeset = auto_nodeset_path
 
     server = Server()
     server.set_endpoint(args.endpoint)
     server.set_server_name(args.server_name)
-    
+
     nodeset_path = args.nodeset
     tmp_nodeset = None
 
@@ -660,22 +723,24 @@ def main():
         tmp_nodeset, dropped_nodes, dropped_refs = drop_bad_nodeset_nodes(args.nodeset)
         nodeset_path = tmp_nodeset
         if not args.quiet:
-            print(f"[NodeSet] Dropped {dropped_nodes} nodes with non-canonical NodeIds; dropped {dropped_refs} bad references")
+            print(
+                f"[NodeSet] Dropped {dropped_nodes} nodes with non-canonical NodeIds; dropped {dropped_refs} bad references"
+            )
 
     # Import NodeSet
     server.import_xml(nodeset_path)
 
     server.start()
-    
+
     # Build namespace mapping and check for mismatches
     ns_map = build_namespace_map(server, nodeset_path)
     ns_array = server.get_namespace_array()
-    
+
     if not args.quiet:
-        print(f"[Server namespaces]")
+        print("[Server namespaces]")
         for i, ns in enumerate(ns_array):
             print(f"  ns={i}: {ns}")
-    
+
     # Check CSV for namespace indices and detect mismatches
     df_sample = df.head(100)  # Check first 100 rows for CSV namespace indices
     csv_ns_indices = set()
@@ -683,7 +748,7 @@ def main():
         match = re.match(r"^ns=(\d+);", str(tagname))
         if match:
             csv_ns_indices.add(int(match.group(1)))
-    
+
     # Check if CSV namespace indices map correctly
     # We only care about mismatches for namespaces actually used in the CSV
     needs_mapping = False
@@ -700,33 +765,38 @@ def main():
             # There's remapping happening - this is OK if it's intentional
             needs_mapping = True
             mismatched_indices.append((csv_idx, server_idx, "remapped"))
-    
+
     if needs_mapping and not args.allow_ns_mismatch:
-        print(f"\n⚠️  ERROR: Namespace index mismatch detected!")
+        print("\n⚠️  ERROR: Namespace index mismatch detected!")
         print(f"   CSV uses namespace indices: {sorted(csv_ns_indices)}")
         print(f"   Namespace mapping: {ns_map}")
-        print(f"\n   Mismatches detected:")
+        print("\n   Mismatches detected:")
         for csv_idx, srv_idx, reason in mismatched_indices:
             if reason == "not found":
                 print(f"   - CSV ns={csv_idx} has no corresponding server namespace")
             else:
                 print(f"   - CSV ns={csv_idx} maps to server ns={srv_idx}")
-        print(f"\n   Solutions:")
-        print(f"   1) Regenerate nodeset to match CSV namespace indices")
-        print(f"   2) Use --allow-ns-mismatch flag to enable automatic namespace remapping")
+        print("\n   Solutions:")
+        print("   1) Regenerate nodeset to match CSV namespace indices")
+        print("   2) Use --allow-ns-mismatch flag to enable automatic namespace remapping")
         server.stop()
         return
-    
+
     if not args.quiet:
         if needs_mapping:
-            print(f"[Namespace remapping] CSV → Server: {dict((c, s) for c, s, _ in mismatched_indices)}")
-            print(f"[Using automatic namespace remapping (--allow-ns-mismatch enabled)]")
+            print(
+                "[Namespace remapping] CSV → Server:",
+                {c: s for c, s, _ in mismatched_indices},
+            )
+            print("[Using automatic namespace remapping (--allow-ns-mismatch enabled)]")
         else:
-            print(f"[Namespace validation] CSV indices {sorted(csv_ns_indices)} align with server ✓")
+            print(
+                f"[Namespace validation] CSV indices {sorted(csv_ns_indices)} align with server ✓"
+            )
 
     # Pre-compute: if ns_map is identity (all indices unchanged), skip regex on every row
     _ns_identity = all(k == v for k, v in ns_map.items())
-    
+
     # Start the tag-injection HTTP API + background override applier
     override_store = OverrideStore()
     httpd = None
@@ -755,7 +825,7 @@ def main():
 
             for i, row in enumerate(df.itertuples(index=False), start=1):
                 ts = getattr(row, args.ts_col)
-                tagname = str(getattr(row, "TAGNAME"))
+                tagname = str(row.TAGNAME)
                 dtype = str(getattr(row, "DATATYPE", "String"))
                 raw_val = getattr(row, "TAGVALUE", None)
 
@@ -787,7 +857,7 @@ def main():
                     py_val = cast_value(raw_val, dtype)
                     vtype = VARIANT_TYPE.get(dtype, ua.VariantType.String)
                     dv = ua.DataValue(ua.Variant(py_val, vtype))
-                    now = datetime.now(timezone.utc).replace(tzinfo=None)
+                    now = datetime.now(UTC).replace(tzinfo=None)
                     dv.SourceTimestamp = now
                     dv.ServerTimestamp = now
                     node.set_value(dv)

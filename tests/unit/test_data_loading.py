@@ -11,6 +11,7 @@ Tests cover:
 
 import pandas as pd
 import pytest
+
 from opc_replay.server import load_and_prepare_data
 
 
@@ -21,7 +22,7 @@ class TestLoadAndPrepareDataBasic:
     def test_load_csv_file(self, temp_csv_file):
         """Test loading a CSV file."""
         df = load_and_prepare_data(str(temp_csv_file), "TS")
-        
+
         assert len(df) == 5
         assert "TAGNAME" in df.columns
         assert "TAGVALUE" in df.columns
@@ -31,7 +32,7 @@ class TestLoadAndPrepareDataBasic:
     def test_load_parquet_file(self, temp_parquet_file):
         """Test loading a Parquet file."""
         df = load_and_prepare_data(str(temp_parquet_file), "TS")
-        
+
         assert len(df) == 5
         assert "TAGNAME" in df.columns
         assert "TAGVALUE" in df.columns
@@ -40,13 +41,13 @@ class TestLoadAndPrepareDataBasic:
     def test_timestamps_parsed_as_datetime(self, temp_csv_file):
         """Test timestamps are parsed as datetime objects."""
         df = load_and_prepare_data(str(temp_csv_file), "TS")
-        
+
         assert pd.api.types.is_datetime64_any_dtype(df["TS"])
 
     def test_timestamps_converted_to_utc(self, temp_csv_file):
         """Test timestamps are timezone-aware UTC."""
         df = load_and_prepare_data(str(temp_csv_file), "TS")
-        
+
         # Check first timestamp has timezone
         assert df["TS"].iloc[0].tzinfo is not None
         assert str(df["TS"].iloc[0].tzinfo) == "UTC"
@@ -61,9 +62,9 @@ ns=2;s=Tag3,2,Float,2026-01-01T10:00:01Z
 """
         csv_file = tmp_path / "unsorted.csv"
         csv_file.write_text(csv_content)
-        
+
         df = load_and_prepare_data(str(csv_file), "TS")
-        
+
         # Should be sorted
         assert df["TAGVALUE"].iloc[0] == 1
         assert df["TAGVALUE"].iloc[1] == 2
@@ -72,7 +73,7 @@ ns=2;s=Tag3,2,Float,2026-01-01T10:00:01Z
     def test_tagname_normalized_to_string(self, temp_csv_file):
         """Test TAGNAME column is normalized to string."""
         df = load_and_prepare_data(str(temp_csv_file), "TS")
-        
+
         # String dtype or object dtype are both acceptable
         assert df["TAGNAME"].dtype in (object, "string")
         # Check no leading/trailing whitespace
@@ -91,9 +92,9 @@ ns=2;s=Temperature,20.5,Float,2026-01-01T10:00:00Z
 """
         csv_file = tmp_path / "tag_name.csv"
         csv_file.write_text(csv_content)
-        
+
         df = load_and_prepare_data(str(csv_file), "TS")
-        
+
         assert "TAGNAME" in df.columns
         assert "TAG_NAME" not in df.columns
 
@@ -104,9 +105,9 @@ ns=2;s=Temperature,20.5,Float,2026-01-01T10:00:00Z
 """
         csv_file = tmp_path / "value.csv"
         csv_file.write_text(csv_content)
-        
+
         df = load_and_prepare_data(str(csv_file), "TS")
-        
+
         assert "TAGVALUE" in df.columns
         assert "VALUE" not in df.columns
 
@@ -117,9 +118,9 @@ ns=2;s=Temperature,20.5,Float,2026-01-01T10:00:00Z
 """
         csv_file = tmp_path / "both.csv"
         csv_file.write_text(csv_content)
-        
+
         df = load_and_prepare_data(str(csv_file), "TS")
-        
+
         assert "TAGNAME" in df.columns
         assert "TAGVALUE" in df.columns
         assert "TAG_NAME" not in df.columns
@@ -132,9 +133,9 @@ ns=2;s=Temp1,ns=2;s=Temp2,20.5,Float,2026-01-01T10:00:00Z
 """
         csv_file = tmp_path / "both_formats.csv"
         csv_file.write_text(csv_content)
-        
+
         df = load_and_prepare_data(str(csv_file), "TS")
-        
+
         # Should keep TAGNAME, not rename TAG_NAME
         assert "TAGNAME" in df.columns
         assert df["TAGNAME"].iloc[0] == "ns=2;s=Temp1"
@@ -155,10 +156,10 @@ ns=2;s=Tag,5,Float,2026-01-01T10:00:04Z
 """
         csv_file = tmp_path / "offset_test.csv"
         csv_file.write_text(csv_content)
-        
+
         # Skip first 2 seconds
         df = load_and_prepare_data(str(csv_file), "TS", offset=2.0)
-        
+
         # Should start at 10:00:02
         assert len(df) == 3
         assert df["TAGVALUE"].iloc[0] == 3
@@ -167,7 +168,7 @@ ns=2;s=Tag,5,Float,2026-01-01T10:00:04Z
         """Test offset=0 returns all data."""
         df_no_offset = load_and_prepare_data(str(temp_csv_file), "TS", offset=0)
         df_explicit_zero = load_and_prepare_data(str(temp_csv_file), "TS", offset=0.0)
-        
+
         assert len(df_no_offset) == len(df_explicit_zero)
 
     def test_offset_exceeds_duration_raises_error(self, tmp_path):
@@ -178,7 +179,7 @@ ns=2;s=Tag,2,Float,2026-01-01T10:00:01Z
 """
         csv_file = tmp_path / "short_data.csv"
         csv_file.write_text(csv_content)
-        
+
         with pytest.raises(ValueError, match="Offset.*exceeds data duration"):
             load_and_prepare_data(str(csv_file), "TS", offset=10.0)
 
@@ -191,9 +192,9 @@ ns=2;s=Tag,3,Float,2026-01-01T10:00:01.000Z
 """
         csv_file = tmp_path / "subsecond.csv"
         csv_file.write_text(csv_content)
-        
+
         df = load_and_prepare_data(str(csv_file), "TS", offset=0.5)
-        
+
         # Should skip first row
         assert len(df) == 2
         assert df["TAGVALUE"].iloc[0] == 2
@@ -206,19 +207,19 @@ class TestLoadAndPrepareDataMaxRows:
     def test_max_rows_limits_output(self, temp_csv_file):
         """Test max_rows limits number of rows returned."""
         df = load_and_prepare_data(str(temp_csv_file), "TS", max_rows=3)
-        
+
         assert len(df) == 3
 
     def test_max_rows_none_returns_all(self, temp_csv_file):
         """Test max_rows=None returns all rows."""
         df = load_and_prepare_data(str(temp_csv_file), "TS", max_rows=None)
-        
+
         assert len(df) == 5
 
     def test_max_rows_larger_than_data_returns_all(self, temp_csv_file):
         """Test max_rows larger than data returns all rows."""
         df = load_and_prepare_data(str(temp_csv_file), "TS", max_rows=1000)
-        
+
         assert len(df) == 5
 
     def test_offset_and_max_rows_combined(self, tmp_path):
@@ -232,10 +233,10 @@ ns=2;s=Tag,5,Float,2026-01-01T10:00:04Z
 """
         csv_file = tmp_path / "combined.csv"
         csv_file.write_text(csv_content)
-        
+
         # Skip first 2 seconds, then take 2 rows
         df = load_and_prepare_data(str(csv_file), "TS", offset=2.0, max_rows=2)
-        
+
         # Should get rows 3 and 4
         assert len(df) == 2
         assert df["TAGVALUE"].iloc[0] == 3
@@ -253,7 +254,7 @@ class TestLoadAndPrepareDataErrorHandling:
 """
         csv_file = tmp_path / "missing_tagname.csv"
         csv_file.write_text(csv_content)
-        
+
         with pytest.raises(ValueError, match="missing required columns.*TAGNAME"):
             load_and_prepare_data(str(csv_file), "TS")
 
@@ -264,7 +265,7 @@ ns=2;s=Temperature,Float,2026-01-01T10:00:00Z
 """
         csv_file = tmp_path / "missing_tagvalue.csv"
         csv_file.write_text(csv_content)
-        
+
         with pytest.raises(ValueError, match="missing required columns.*TAGVALUE"):
             load_and_prepare_data(str(csv_file), "TS")
 
@@ -275,7 +276,7 @@ ns=2;s=Temperature,20.5,2026-01-01T10:00:00Z
 """
         csv_file = tmp_path / "missing_datatype.csv"
         csv_file.write_text(csv_content)
-        
+
         with pytest.raises(ValueError, match="missing required columns.*DATATYPE"):
             load_and_prepare_data(str(csv_file), "TS")
 
@@ -286,7 +287,7 @@ ns=2;s=Temperature,20.5,Float
 """
         csv_file = tmp_path / "missing_ts.csv"
         csv_file.write_text(csv_content)
-        
+
         with pytest.raises(ValueError, match="missing timestamp column 'TS'"):
             load_and_prepare_data(str(csv_file), "TS")
 
@@ -294,7 +295,7 @@ ns=2;s=Temperature,20.5,Float
         """Test unsupported file extension raises ValueError."""
         txt_file = tmp_path / "data.txt"
         txt_file.write_text("some data")
-        
+
         with pytest.raises(ValueError, match="Unsupported file type"):
             load_and_prepare_data(str(txt_file), "TS")
 
@@ -307,9 +308,9 @@ ns=2;s=Tag3,3,Float,2026-01-01T10:00:02Z
 """
         csv_file = tmp_path / "invalid_ts.csv"
         csv_file.write_text(csv_content)
-        
+
         df = load_and_prepare_data(str(csv_file), "TS")
-        
+
         # Should only have 2 rows (invalid dropped)
         assert len(df) == 2
         assert df["TAGVALUE"].iloc[0] == 1
@@ -324,7 +325,7 @@ ns=2;s=Tag2,2,Float,also-invalid
 """
         csv_file = tmp_path / "all_invalid_ts.csv"
         csv_file.write_text(csv_content)
-        
+
         # After dropping invalid timestamps, dataframe becomes empty
         # This should work but return empty dataframe
         df = load_and_prepare_data(str(csv_file), "TS")
@@ -342,11 +343,11 @@ ns=2;s=Temperature,20.5,Float,2026-01-01T10:00:00Z
 """
         csv_file = tmp_path / "bom.csv"
         # Write with UTF-8 BOM using encoding parameter
-        with open(csv_file, 'w', encoding='utf-8-sig') as f:
+        with open(csv_file, "w", encoding="utf-8-sig") as f:
             f.write(csv_content)
-        
+
         df = load_and_prepare_data(str(csv_file), "TS")
-        
+
         assert len(df) == 1
         assert "TAGNAME" in df.columns
 
@@ -357,9 +358,9 @@ ns=2;s=Temperature,20.5,Float,2026-01-01T10:00:00Z
 """
         csv_file = tmp_path / "single_row.csv"
         csv_file.write_text(csv_content)
-        
+
         df = load_and_prepare_data(str(csv_file), "TS")
-        
+
         assert len(df) == 1
 
     def test_tagname_with_whitespace(self, tmp_path):
@@ -369,9 +370,9 @@ ns=2;s=Temperature,20.5,Float,2026-01-01T10:00:00Z
 """
         csv_file = tmp_path / "whitespace.csv"
         csv_file.write_text(csv_content)
-        
+
         df = load_and_prepare_data(str(csv_file), "TS")
-        
+
         assert df["TAGNAME"].iloc[0] == "ns=2;s=Temperature"
 
     def test_case_sensitive_column_names(self, tmp_path):
@@ -382,7 +383,7 @@ ns=2;s=Temperature,20.5,Float,2026-01-01T10:00:00Z
 """
         csv_file = tmp_path / "lowercase.csv"
         csv_file.write_text(csv_content)
-        
+
         with pytest.raises(ValueError, match="missing required columns"):
             load_and_prepare_data(str(csv_file), "ts")
 
@@ -395,9 +396,9 @@ ns=2;s=Tag3,3,Float,2026-01-01T10:00:00Z
 """
         csv_file = tmp_path / "duplicates.csv"
         csv_file.write_text(csv_content)
-        
+
         df = load_and_prepare_data(str(csv_file), "TS")
-        
+
         # All rows should be preserved, just sorted
         assert len(df) == 3
 
@@ -410,8 +411,8 @@ ns=2;s=Tag3,3,Float,2026-01-01 10:00:02
 """
         csv_file = tmp_path / "formats.csv"
         csv_file.write_text(csv_content)
-        
+
         df = load_and_prepare_data(str(csv_file), "TS")
-        
+
         # All valid formats should be parsed
         assert len(df) >= 2  # At least the first two should parse

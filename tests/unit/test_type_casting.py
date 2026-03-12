@@ -16,7 +16,7 @@ import pandas as pd
 import pytest
 from opcua import ua
 
-from opc_replay.server import cast_value, _infer_variant
+from opc_replay.server import _infer_variant, cast_value
 
 
 @pytest.mark.unit
@@ -215,7 +215,7 @@ class TestInferVariant:
         """Test distinction between Double and Float."""
         float_variant = _infer_variant(3.14, "Float")
         double_variant = _infer_variant(3.14, "Double")
-        
+
         assert float_variant.VariantType == ua.VariantType.Float
         assert double_variant.VariantType == ua.VariantType.Double
 

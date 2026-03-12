@@ -43,5 +43,8 @@ Thumbs.db
 *.tmp
 *.bak
 
+# Linting/formatting
+.ruff_cache/
+
 # uv
 uv.lock

@@ -8,6 +8,7 @@ Tests cover:
 """
 
 import pytest
+
 from opc_replay.server import is_canonical_nodeid, remap_nodeid
 
 
@@ -142,7 +143,7 @@ class TestRemapNodeId:
     def test_remap_multiple_namespaces(self):
         """Test remapping with multiple namespace mappings."""
         ns_map = {1: 5, 2: 6, 3: 7}
-        
+
         assert remap_nodeid("ns=1;s=Tag1", ns_map) == "ns=5;s=Tag1"
         assert remap_nodeid("ns=2;s=Tag2", ns_map) == "ns=6;s=Tag2"
         assert remap_nodeid("ns=3;s=Tag3", ns_map) == "ns=7;s=Tag3"
@@ -162,11 +163,11 @@ class TestRemapNodeId:
     def test_remap_preserves_complex_identifiers(self):
         """Test that complex identifiers are preserved during remapping."""
         ns_map = {2: 3}
-        
+
         # Complex string identifier
         result = remap_nodeid("ns=2;s=Root.Folder.SubFolder.Tag.Name", ns_map)
         assert result == "ns=3;s=Root.Folder.SubFolder.Tag.Name"
-        
+
         # Identifier with special characters
         result = remap_nodeid("ns=2;s=Tag_With-Special.Chars/123", ns_map)
         assert result == "ns=3;s=Tag_With-Special.Chars/123"
@@ -174,16 +175,16 @@ class TestRemapNodeId:
     def test_remap_malformed_nodeid_returns_original(self):
         """Test that malformed NodeIds are returned unchanged."""
         ns_map = {2: 3}
-        
+
         # Missing namespace
         assert remap_nodeid("s=Temperature", ns_map) == "s=Temperature"
-        
+
         # Wrong format
         assert remap_nodeid("ns:2;s:Temperature", ns_map) == "ns:2;s:Temperature"
-        
+
         # Missing identifier type
         assert remap_nodeid("ns=2;Temperature", ns_map) == "ns=2;Temperature"
-        
+
         # Empty string
         assert remap_nodeid("", ns_map) == ""
 
@@ -192,7 +193,7 @@ class TestRemapNodeId:
         ns_map = {2: 3}
         result = remap_nodeid("ns=2;s=Temperature", ns_map)
         assert result == "ns=3;s=Temperature"
-        
+
         # No internal whitespace should be added or removed
         result = remap_nodeid("ns=2;s=My Tag", ns_map)
         assert result == "ns=3;s=My Tag"
@@ -220,7 +221,7 @@ class TestNodeIdEdgeCases:
         ns_map = {2: 3}
         result = remap_nodeid("ns=2;s=Temperature_°C", ns_map)
         assert result == "ns=3;s=Temperature_°C"
-        
+
         result = remap_nodeid("ns=2;s=中文标签", ns_map)
         assert result == "ns=3;s=中文标签"
 
@@ -240,7 +241,7 @@ class TestNodeIdEdgeCases:
         """Test identifiers containing semicolons (edge case)."""
         # The identifier itself can contain semicolons after the first one
         assert is_canonical_nodeid("ns=2;s=Tag;With;Semicolons") is True
-        
+
         ns_map = {2: 3}
         result = remap_nodeid("ns=2;s=Tag;With;Semicolons", ns_map)
         assert result == "ns=3;s=Tag;With;Semicolons"
@@ -248,15 +249,18 @@ class TestNodeIdEdgeCases:
     def test_remap_preserves_all_identifier_types(self):
         """Test all identifier types are preserved correctly."""
         ns_map = {1: 2}
-        
+
         # String
         assert remap_nodeid("ns=1;s=Tag", ns_map) == "ns=2;s=Tag"
-        
+
         # Integer
         assert remap_nodeid("ns=1;i=123", ns_map) == "ns=2;i=123"
-        
+
         # GUID
-        assert remap_nodeid("ns=1;g=00000000-0000-0000-0000-000000000000", ns_map) == "ns=2;g=00000000-0000-0000-0000-000000000000"
-        
+        assert (
+            remap_nodeid("ns=1;g=00000000-0000-0000-0000-000000000000", ns_map)
+            == "ns=2;g=00000000-0000-0000-0000-000000000000"
+        )
+
         # Bytestring
         assert remap_nodeid("ns=1;b=ABCD", ns_map) == "ns=2;b=ABCD"
