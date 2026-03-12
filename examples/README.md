@@ -95,7 +95,7 @@ To use your own data with opc-replay:
 
 3. **Or pre-generate a NodeSet**:
    ```bash
-   python -m opc_replay.csv_to_nodeset \
+   python -m opc_replay.to_nodeset \
        --csv your-data.csv \
        --out your-nodeset.xml \
        --root-name YourSystem

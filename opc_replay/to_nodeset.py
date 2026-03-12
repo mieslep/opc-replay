@@ -106,7 +106,7 @@ def generate_nodeset_from_dataframe(
         root_name: Root object name (e.g., "MySystem")
         namespace_index: Namespace index for generated nodes (default: 1)
         namespace_uri: Namespace URI (default: urn:<root_name>:tags)
-        split_regex: Regex to split tag names into folder hierarchy (default: '\.')
+        split_regex: Regex to split tag names into folder hierarchy (default: "\\.")
         no_folders: If True, place all variables under root without folder hierarchy
     
     Returns:
@@ -259,14 +259,14 @@ For automatic NodeSet generation during replay, use: opc-replay --auto-nodeset
 
 Examples:
   # Generate from CSV
-  python -m opc_replay.csv_to_nodeset --csv data.csv --out nodeset.xml --root-name MySystem
+  python -m opc_replay.to_nodeset --csv data.csv --out nodeset.xml --root-name MySystem
 
   # With custom namespace
-  python -m opc_replay.csv_to_nodeset --csv data.csv --out nodeset.xml --root-name MySystem \\
+  python -m opc_replay.to_nodeset --csv data.csv --out nodeset.xml --root-name MySystem \\
       --namespace-uri "urn:mycompany:tags"
 
   # Flat structure (no folder hierarchy)
-  python -m opc_replay.csv_to_nodeset --csv data.csv --out nodeset.xml --root-name MySystem \\
+  python -m opc_replay.to_nodeset --csv data.csv --out nodeset.xml --root-name MySystem \\
       --no-folders
         """
     )

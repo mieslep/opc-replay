@@ -608,7 +608,7 @@ def main():
     # Auto-generate NodeSet if requested
     if args.auto_nodeset:
         # Import here to avoid circular dependency
-        from .csv_to_nodeset import generate_nodeset_from_dataframe
+        from .to_nodeset import generate_nodeset_from_dataframe
         
         # Determine root name
         if args.root_name:

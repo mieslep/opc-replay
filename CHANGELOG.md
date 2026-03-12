@@ -25,9 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - examples/README.md for quick example file reference
 
 ### Changed
-- **Refactored csv_to_nodeset.py** - Extracted core logic into reusable `generate_nodeset_from_dataframe()` function
+- **Refactored to_nodeset.py** - Extracted core logic into reusable `generate_nodeset_from_dataframe()` function
   - Enables programmatic NodeSet generation
-  - CLI remains available via `python -m opc_replay.csv_to_nodeset`
+  - CLI remains available via `python -m opc_replay.to_nodeset`
   - Improved help text and error messages
 - **Test improvements** - Replaced hardcoded test data references with example files
   - test_load_logic.py now uses examples/simple-data.csv
@@ -114,7 +114,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Offset and max-rows options for data slicing
   - Namespace remapping support
   - Error handling for invalid NodeIds
-- Utility for generating NodeSet XML from tag catalogs (`opc_replay/csv_to_nodeset.py`)
+- Utility for generating NodeSet XML from tag catalogs (`opc_replay/to_nodeset.py`)
 - Test utilities:
   - `tests/test_client.py` - OPC UA client for testing
   - `tests/test_load_logic.py` - Data loading tests

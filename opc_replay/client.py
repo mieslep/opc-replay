@@ -192,8 +192,11 @@ Examples:
         # Store previous values for change detection
         prev_values = {}
         
-        # Poll loop
+        # Poll loop with connection monitoring
         poll_num = 0
+        consecutive_errors = 0
+        max_consecutive_errors = 3
+        
         try:
             while args.poll_count == 0 or poll_num < args.poll_count:
                 poll_num += 1
@@ -201,11 +204,16 @@ Examples:
                 
                 # Read all variables and track changes
                 changed_vars = []
+                successful_reads = 0
+                failed_reads = 0
+                last_error = None
+                
                 for var in variables:
                     try:
                         node_id = var.nodeid.to_string()
                         browse_name = var.get_browse_name().Name
                         value = var.get_value()
+                        successful_reads += 1
                         
                         # Check if value changed
                         if node_id not in prev_values or prev_values[node_id] != value:
@@ -218,8 +226,27 @@ Examples:
                                 'prev_value': prev_values.get(node_id, 'N/A')
                             })
                             prev_values[node_id] = value
-                    except Exception:
-                        continue
+                    except Exception as e:
+                        failed_reads += 1
+                        last_error = e
+                
+                # Check if connection is lost
+                if successful_reads == 0 and failed_reads > 0:
+                    # All reads failed - likely connection problem
+                    consecutive_errors += 1
+                    print(f"\n✗ Connection error: All reads failed ({last_error})", file=sys.stderr)
+                    
+                    if consecutive_errors >= max_consecutive_errors:
+                        print(f"\n✗ Lost connection to server after {consecutive_errors} failed attempts", file=sys.stderr)
+                        print("  Server may have stopped. Exiting...", file=sys.stderr)
+                        break
+                    
+                    print(f"  Retrying... ({consecutive_errors}/{max_consecutive_errors})", file=sys.stderr)
+                    time.sleep(args.poll_interval)
+                    continue
+                elif successful_reads > 0:
+                    # Some reads succeeded - reset error counter
+                    consecutive_errors = 0
                 
                 # Display results
                 print(f"\n{'='*110}")
@@ -257,8 +284,12 @@ Examples:
         sys.exit(1)
     
     finally:
-        client.disconnect()
-        print("Disconnected")
+        try:
+            client.disconnect()
+            print("Disconnected")
+        except Exception:
+            # Disconnect may fail if connection is already dead
+            pass
 
 
 if __name__ == "__main__":
