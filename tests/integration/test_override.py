@@ -9,17 +9,19 @@ What it tests:
   4. Waits for the override to expire, then confirms the value returns to replay data
 
 Requirements:
-  - OPC UA replay server must be running with example data:
-    
-    opc-replay --data examples/simple-data.csv --ts-col TS --auto-nodeset --loop --speed 10
-    
-  - Default endpoint:  opc.tcp://localhost:4840/
-  - Default API port:  http://localhost:8080/inject
+  - None - test automatically starts OPC UA server with test data
 
-Usage:
-  python tests/test_override.py
-  python tests/test_override.py --endpoint opc.tcp://localhost:4840/ --api http://localhost:8080
-  python tests/test_override.py --skip-warmup  # Skip initial warmup delay
+Usage (pytest - recommended):
+  pytest tests/integration/test_override.py -v -s
+
+Usage (standalone with manual server):
+  # Start server first:
+  opc-replay --data examples/simple-data.csv --ts-col TS --auto-nodeset --loop --speed 10
+  
+  # Then run test:
+  python tests/integration/test_override.py
+  python tests/integration/test_override.py --endpoint opc.tcp://localhost:4840/ --api http://localhost:8080
+  python tests/integration/test_override.py --skip-warmup  # Skip initial warmup delay
 """
 
 import argparse
@@ -27,6 +29,7 @@ import json
 import time
 import sys
 import threading
+import pytest
 from datetime import datetime, timezone
 import urllib.request
 import urllib.error
@@ -387,7 +390,66 @@ def check_opcua_reachable(endpoint: str) -> bool:
         return False
 
 
+@pytest.mark.integration
+def test_override_injection(
+    opcua_test_server,
+    warmup=0.5,  # Shorter warmup for pytest
+    no_clear=False
+):
+    """
+    Test tag injection overrides against the OPC UA replay server.
+    
+    Args:
+        opcua_test_server: Pytest fixture providing server info
+        warmup: Seconds to wait before running tests
+        no_clear: Do not clear existing overrides before running tests
+    """
+    endpoint = opcua_test_server["endpoint"]
+    api_base = opcua_test_server["api_base"]
+    
+    print(f"\n{'═'*60}")
+    print(f"  OPC UA Override Injection Test")
+    print(f"  Endpoint : {endpoint}")
+    print(f"  API      : {api_base}")
+    print(f"{'═'*60}")
+
+    # Pre-flight checks
+    if not check_api_reachable(api_base):
+        pytest.fail("API not reachable")
+    if not check_opcua_reachable(endpoint):
+        pytest.fail("OPC UA server not reachable")
+    _ok("Pre-flight checks passed")
+
+    if not no_clear:
+        clear_overrides(api_base)
+        _info("Cleared any existing overrides")
+
+    if warmup > 0:
+        _info(f"Waiting {warmup:.1f}s for replay to write initial tag values…")
+        time.sleep(warmup)
+
+    results = []
+    for tc in TEST_CASES:
+        ok = run_test(tc, endpoint, api_base)
+        results.append((tc["name"], ok))
+
+    print(f"\n{'═'*60}")
+    print("  Summary")
+    print(f"{'─'*60}")
+    all_passed = True
+    for name, ok in results:
+        status = f"{GREEN}PASS{RESET}" if ok else f"{RED}FAIL{RESET}"
+        print(f"  {status}  {name}")
+        if not ok:
+            all_passed = False
+    print(f"{'═'*60}\n")
+
+    # Pytest assertion
+    assert all_passed, "Some override injection tests failed"
+
+
 def main():
+    """CLI wrapper for the test - allows running as standalone script."""
     ap = argparse.ArgumentParser(description="Test tag injection overrides against the OPC UA replay server")
     ap.add_argument("--endpoint", default="opc.tcp://localhost:4840/",
                     help="OPC UA server endpoint (default: opc.tcp://localhost:4840/)")
@@ -407,12 +469,6 @@ def main():
                     help="Seconds to watch the subscription during --sub-test (default: 8)")
     args = ap.parse_args()
 
-    print(f"\n{'═'*60}")
-    print(f"  OPC UA Override Injection Test")
-    print(f"  Endpoint : {args.endpoint}")
-    print(f"  API      : {args.api}")
-    print(f"{'═'*60}")
-
     # Subscription diagnostic mode — bypass injection tests
     if args.sub_test:
         if not check_opcua_reachable(args.endpoint):
@@ -420,41 +476,20 @@ def main():
         run_sub_test(args.sub_tag, args.endpoint, args.sub_duration)
         sys.exit(0)
 
-    # Pre-flight checks
-    if not check_api_reachable(args.api):
+    # Run the main test
+    try:
+        test_override_injection(
+            endpoint=args.endpoint,
+            api_base=args.api,
+            warmup=args.warmup,
+            no_clear=args.no_clear
+        )
+        sys.exit(0)
+    except AssertionError:
         sys.exit(1)
-    if not check_opcua_reachable(args.endpoint):
+    except Exception as e:
+        print(f"\n{RED}ERROR{RESET}: {e}")
         sys.exit(1)
-    _ok("Pre-flight checks passed")
-
-    if not args.no_clear:
-        clear_overrides(args.api)
-        _info("Cleared any existing overrides")
-
-    if args.warmup > 0:
-        _info(f"Waiting {args.warmup:.0f}s for replay to write initial tag values…")
-        for remaining in range(int(args.warmup), 0, -5):
-            print(f"    {remaining}s remaining…", end="\r")
-            time.sleep(min(5, remaining))
-        print(" " * 30, end="\r")  # clear the countdown line
-
-    results = []
-    for tc in TEST_CASES:
-        ok = run_test(tc, args.endpoint, args.api)
-        results.append((tc["name"], ok))
-
-    print(f"\n{'═'*60}")
-    print("  Summary")
-    print(f"{'─'*60}")
-    all_passed = True
-    for name, ok in results:
-        status = f"{GREEN}PASS{RESET}" if ok else f"{RED}FAIL{RESET}"
-        print(f"  {status}  {name}")
-        if not ok:
-            all_passed = False
-    print(f"{'═'*60}\n")
-
-    sys.exit(0 if all_passed else 1)
 
 
 if __name__ == "__main__":

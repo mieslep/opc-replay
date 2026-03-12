@@ -1,15 +1,28 @@
 #!/usr/bin/env python3
-"""Test OPC UA client to verify nodes are accessible"""
+"""
+Integration test: OPC UA client to monitor tag changes.
+
+Tests the OPC UA server by connecting and polling for tag value changes.
+
+Requirements:
+  - OPC UA replay server must be running, e.g.:
+    opc-replay --data examples/simple-data.csv --ts-col TS --auto-nodeset --loop
+
+Usage:
+  python examples/integration_tests/test_client.py
+  python examples/integration_tests/test_client.py --poll-count 10 --poll-interval 1.0
+"""
 
 from opcua import Client
 import time
 import argparse
 from datetime import datetime
 
-parser = argparse.ArgumentParser(description="Test OPC UA client")
+parser = argparse.ArgumentParser(description="Test OPC UA client - monitor tag changes")
 parser.add_argument("--tag-read-count", type=int, default=25, help="Number of changed tags to display per poll (default: 25)")
 parser.add_argument("--poll-interval", type=float, default=2.0, help="Seconds between polls (default: 2.0)")
 parser.add_argument("--poll-count", type=int, default=5, help="Number of times to poll (default: 5, use 0 for infinite)")
+parser.add_argument("--namespace", type=int, default=2, help="Namespace index to monitor (default: 2)")
 args = parser.parse_args()
 
 client = Client("opc.tcp://localhost:4840")
@@ -22,18 +35,22 @@ try:
     for i, ns in enumerate(namespaces):
         print(f"  ns={i}: {ns}")
     
-    # Find the index for urn:pet001:tags
-    pet_ns_idx = namespaces.index("urn:pet001:tags")
-    print(f"\nurn:pet001:tags is at ns={pet_ns_idx}")
+    # Use specified or default namespace (typically ns=2 for example data)
+    target_ns_idx = args.namespace
+    if target_ns_idx >= len(namespaces):
+        print(f"\n✗ ERROR: Namespace {target_ns_idx} not found. Server has {len(namespaces)} namespaces.")
+        exit(1)
     
-    # Browse to find all variable nodes in the PET001 namespace
-    print(f"\nDiscovering all tags in ns={pet_ns_idx}...")
+    print(f"\nMonitoring namespace: ns={target_ns_idx} ({namespaces[target_ns_idx]})")
+    
+    # Browse to find all variable nodes in the target namespace
+    print(f"\nDiscovering all tags in ns={target_ns_idx}...")
     print("-" * 80)
     
     root = client.get_root_node()
     objects = client.get_objects_node()
     
-    # Recursively browse to find ALL variable nodes in the PET001 namespace
+    # Recursively browse to find ALL variable nodes in the target namespace
     def browse_variables(node, target_ns, found_vars=None):
         if found_vars is None:
             found_vars = []
@@ -53,7 +70,7 @@ try:
             pass
         return found_vars
     
-    variables = browse_variables(objects, pet_ns_idx)
+    variables = browse_variables(objects, target_ns_idx)
     
     print(f"Found {len(variables)} total variables\n")
     

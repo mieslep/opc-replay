@@ -21,6 +21,8 @@ dependencies = [
     "opcua>=0.98.13",
     "pandas>=3.0.1",
     "pyarrow>=23.0.1",
+    "pytest>=9.0.2",
+    "pytest-mock>=3.14.0",
 ]
 
 [project.optional-dependencies]
@@ -41,3 +43,24 @@ Repository = "https://github.com/phil/opc-replay"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+]
+markers = [
+    "unit: Unit tests with mocked dependencies",
+    "integration: Integration tests requiring external services",
+    "slow: Tests that take more than 1 second",
+    "threading: Tests for thread safety and concurrency",
+]
+filterwarnings = [
+    # Ignore deprecation warnings from third-party opcua library (Python 3.13)
+    "ignore:datetime.datetime.utcnow\\(\\) is deprecated:DeprecationWarning:opcua",
+]

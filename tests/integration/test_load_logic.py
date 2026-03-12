@@ -1,24 +1,32 @@
 #!/usr/bin/env python3
 """
-Test to verify the load_and_prepare_data logic with example data.
+Integration test: Verify load_and_prepare_data logic with example data.
 
-This test uses the simple example data from the examples/ directory to validate
-that data loading, sorting, and filtering work correctly.
+Tests data loading, sorting, and filtering operations using the simple example data.
 
 Requirements:
     - examples/simple-data.csv must exist
+
+Usage (pytest):
+    pytest tests/integration/test_load_logic.py -v
+
+Usage (standalone):
+    python tests/integration/test_load_logic.py
 """
 import pandas as pd
+import pytest
 import sys
 from pathlib import Path
 
 # Add parent directory to path to import from opc_replay
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+
+@pytest.mark.integration
 def test_load_logic():
     """Test data loading and preparation logic"""
-    # Use example data file
-    data_file = Path(__file__).parent.parent / "examples" / "simple-data.csv"
+    # Use example data file (tests/integration -> tests -> root -> examples)
+    data_file = Path(__file__).parent.parent.parent / "examples" / "simple-data.csv"
     
     if not data_file.exists():
         print(f"ERROR: Example data file not found: {data_file}")
@@ -62,5 +70,7 @@ def test_load_logic():
     
     print("\n✓ All checks passed")
 
+
 if __name__ == '__main__':
+    # Allow running as standalone script
     test_load_logic()
