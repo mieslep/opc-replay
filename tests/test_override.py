@@ -1,23 +1,25 @@
 #!/usr/bin/env python3
 """
-Override injection test for the OPC UA replay server.
+Override injection integration test for the OPC UA replay server.
 
 What it tests:
-  1. Reads a tag's current value from the OPC UA server.
-  2. POSTs an injection override to the HTTP API.
-  3. Polls the OPC UA node until the injected value appears (≤ 500 ms expected).
-  4. Waits for the override to expire, then confirms the value is writable again
-     by the replay loop (i.e. the override is gone from the API listing).
+  1. Reads a tag's current value from the OPC UA server
+  2. POSTs an injection override to the HTTP API
+  3. Polls the OPC UA node until the injected value appears (≤ 2s expected)
+  4. Waits for the override to expire, then confirms the value returns to replay data
 
 Requirements:
-  - OPC UA replay server must be running:
-      python opcua_nodeset_replay_server.py --nodeset PETALL-UANodeSet.xml --data <file> ...
+  - OPC UA replay server must be running with example data:
+    
+    opc-replay --data examples/simple-data.csv --ts-col TS --auto-nodeset --loop --speed 10
+    
   - Default endpoint:  opc.tcp://localhost:4840/
   - Default API port:  http://localhost:8080/inject
 
 Usage:
-  python test_override.py
-  python test_override.py --endpoint opc.tcp://localhost:4840/ --api http://localhost:8080
+  python tests/test_override.py
+  python tests/test_override.py --endpoint opc.tcp://localhost:4840/ --api http://localhost:8080
+  python tests/test_override.py --skip-warmup  # Skip initial warmup delay
 """
 
 import argparse
@@ -36,46 +38,35 @@ except ImportError:
     sys.exit(1)
 
 # ---------------------------------------------------------------------------
-# Test cases — chosen from the earliest rows of PETALL_20251214_20251221.parquet
+# Test cases - using simple example tags from examples/simple-data.csv
 #
-# PET003 tags appear from t+0s, PET004 from t+3s, both at the very start of the
-# dataset, so their values are written within seconds of the server booting.
-# (PET001 / PET002 only appear after 2h30m / 49m into the data; run the server
-# with --offset 9100 to start past all four machines' first values.)
+# These tags exist in the simple example NodeSet and have changing values
+# in the looping replay data.
 # ---------------------------------------------------------------------------
 TEST_CASES = [
     {
-        "name": "PET003 TH1517 Float override",
-        "tagname": "ns=2;s=PET003.PET003.NetstalMachine_01.TH1.TH1517",
-        "expected_before": 9.0,      # first value in parquet row 0
-        "inject_value": 777.7,
+        "name": "Temperature Float override",
+        "tagname": "ns=2;s=Temperature",
+        "expected_before": None,      # Accept any value (replay data changes)
+        "inject_value": 99.9,
         "dtype": "Float",
         "duration_s": 5,
         "tolerance": 0.01,
     },
     {
-        "name": "PET004 TH1405 Float override",
-        "tagname": "ns=2;s=PET004.PET004.NetstalMachine_01.TH1.TH1405",
-        "expected_before": 9.0,      # first value in parquet (t+3s)
-        "inject_value": 444.4,
+        "name": "Pressure Float override",
+        "tagname": "ns=2;s=Pressure",
+        "expected_before": None,      # Accept any value (replay data changes)
+        "inject_value": 200.5,
         "dtype": "Float",
         "duration_s": 5,
         "tolerance": 0.01,
     },
     {
-        "name": "PET003 P9003 Float override",
-        "tagname": "ns=2;s=PET003.PET003.NetstalMachine_01.P90.P9003",
-        "expected_before": None,     # will accept any non-None value
-        "inject_value": 999.9,
-        "dtype": "Float",
-        "duration_s": 5,
-        "tolerance": 0.01,
-    },
-    {
-        "name": "PET004 TH1919 Float override",
-        "tagname": "ns=2;s=PET004.PET004.NetstalMachine_01.TH1.TH1919",
-        "expected_before": None,     # will accept any non-None value
-        "inject_value": 333.3,
+        "name": "Flow Float override",
+        "tagname": "ns=2;s=Flow",
+        "expected_before": None,      # Accept any value (replay data changes)
+        "inject_value": 50.0,
         "dtype": "Float",
         "duration_s": 5,
         "tolerance": 0.01,
@@ -86,10 +77,8 @@ POLL_INTERVAL = 0.1    # seconds between OPC UA reads during wait
 APPLY_TIMEOUT = 2.0    # max seconds to wait for override to appear on OPC UA
 
 # How many seconds to wait at the start so the replay loop has time to write
-# initial values.  At --speed 10, 15s real = 150s of replay data, enough for
-# PET003/PET004 tags (which appear in the first 10s of data) to be written.
-# Override via --warmup on the command line.
-DEFAULT_WARMUP_S = 15
+# initial values. With simple-data.csv at --speed 10, a few seconds is enough.
+DEFAULT_WARMUP_S = 3
 
 # ANSI colours (skipped on Windows if not supported, falls back gracefully)
 GREEN = "\033[92m"

@@ -1,60 +1,22 @@
 #!/usr/bin/env python3
-# /// script
-# requires-python = ">=3.8"
-# dependencies = [
-#   "pandas",
-#   "pyarrow",
-#   "opcua",
-# ]
-# ///
 """
-OPC UA replay server (Python):
+OPC UA Replay Server
 
-- Imports a UA NodeSet2 XML file (address space / tags)
-- Replays timestamped tag samples from a CSV or Parquet file at real-time speed (default) or accelerated (e.g. 10x)
-- Exposes an HTTP REST API (default port 8080) for injecting real-time tag value overrides
+Replays timestamped OPC UA tag data from CSV or Parquet files at configurable speeds.
+Includes HTTP REST API for real-time tag value injection.
 
-IMPORTANT REALITY:
-- If the NodeSet XML itself contains invalid NodeIds (e.g. NodeId="PET001CalcAlarm" with no "ns=...;s=..."),
-  the FreeOpcUa importer will crash BEFORE the server starts.
-- If you *do not want to "fix" those NodeIds*, the only safe option is to DROP those nodes from the imported NodeSet.
-  This script supports that via --drop-bad-nodeset-nodeids.
+Features:
+- Import NodeSet2 XML files or auto-generate from data
+- Replay at real-time speed or accelerated (e.g., 10x faster)
+- Real-time tag injection via HTTP API (default port 8080)
+- Loop mode for continuous replay
+- Automatic namespace remapping
 
-Separately, the data file may contain "bad" TAGNAME values; those can be skipped during replay via --skip-bad-csv.
+Usage:
+  opc-replay --data mydata.csv --ts-col TS --auto-nodeset
+  opc-replay --nodeset nodeset.xml --data mydata.parquet --ts-col TIMESTAMP --speed 10 --loop
 
-If the namespace indices (ns=X) in the data file differ from those registered in the server after NodeSet import,
-use --allow-ns-mismatch to enable automatic remapping.
-
-Install:
-  python -m pip install opcua pandas pyarrow
-
-Typical usage with CSV:
-  uv run opcua_nodeset_replay_server.py --nodeset PET001-UANodeSet.xml --data PET001-2025-10-03.csv --ts-col TS
-  uv run opcua_nodeset_replay_server.py --nodeset PET001-UANodeSet.xml --data PET001-2025-10-03.csv --ts-col TS --speed 10
-
-Typical usage with Parquet:
-  uv run opcua_nodeset_replay_server.py --nodeset PETALL-UANodeSet.xml --data PETALL_20251214_20251221.parquet --ts-col TIMESTAMP --speed 10
-
-Graceful skipping (for NodeSets with non-canonical NodeIds such as PET001CalcAlarm):
-  uv run opcua_nodeset_replay_server.py \
-    --nodeset PET001-UANodeSet.xml \
-    --data PET001-2025-10-03.csv \
-    --ts-col TS \
-    --speed 10 \
-    --drop-bad-nodeset-nodeids \
-    --skip-bad-csv
-
-Skip ahead in the data and loop forever:
-  uv run opcua_nodeset_replay_server.py \
-    --nodeset PETALL-UANodeSet.xml \
-    --data PETALL_20251214_20251221.parquet \
-    --ts-col TIMESTAMP \
-    --speed 10 \
-    --offset 9100 \
-    --loop
-
-Inject a tag override while the server is running (see inject_tags.py):
-  uv run inject_tags.py --tag "ns=2;s=PET003.PET003.NetstalMachine_01.TH1.TH1517" --value 250.0 --duration 60
+For detailed options, run: opc-replay --help
 """
 
 import argparse
@@ -582,7 +544,7 @@ def main():
     ap = argparse.ArgumentParser(description="OPC UA replay server supporting CSV and Parquet data files")
     ap.add_argument("--endpoint", default="opc.tcp://0.0.0.0:4840/", help="OPC UA endpoint URL")
     ap.add_argument("--server-name", default="ReplayServer", help="Server name")
-    ap.add_argument("--nodeset", required=True, help="NodeSet2 XML file")
+    ap.add_argument("--nodeset", default=None, help="NodeSet2 XML file (optional if --auto-nodeset is used)")
     ap.add_argument("--data", required=True, help="Data file (.csv or .parquet) with TAGNAME/TAG_NAME, TAGVALUE/VALUE, DATATYPE columns and timestamp column")
     ap.add_argument("--csv", help="(Deprecated: use --data) CSV with TAGNAME,TAGVALUE,DATATYPE and timestamp column")
     ap.add_argument("--ts-col", default="TS", help="Timestamp column name (default: TS, common: TIMESTAMP)")
@@ -592,6 +554,14 @@ def main():
     ap.add_argument("--max-rows", type=int, default=None, help="Limit number of rows for quick testing")
     ap.add_argument("--warmup", type=float, default=0.0, help="Seconds to wait before replay begins")
     ap.add_argument("--quiet", action="store_true", help="Reduce per-update logging")
+
+    # NodeSet auto-generation:
+    ap.add_argument("--auto-nodeset", action="store_true",
+                    help="Auto-generate NodeSet from data file (extracts unique TAGNAME+DATATYPE). Saves generated NodeSet for reuse.")
+    ap.add_argument("--root-name", default=None,
+                    help="Root object name for auto-generated NodeSet (default: derived from data filename)")
+    ap.add_argument("--namespace-uri", default=None,
+                    help="Namespace URI for auto-generated NodeSet (default: urn:<root-name>:tags)")
 
     # New "skip, don't fix" behaviors:
     ap.add_argument("--drop-bad-nodeset-nodeids", action="store_true",
@@ -614,6 +584,10 @@ def main():
     if not data_file:
         ap.error("Either --data or --csv is required")
 
+    # Check NodeSet requirement
+    if not args.nodeset and not args.auto_nodeset:
+        ap.error("Either --nodeset or --auto-nodeset is required")
+
     if args.speed <= 0:
         raise ValueError("--speed must be > 0")
 
@@ -630,6 +604,50 @@ def main():
         duration = (df[args.ts_col].max() - df[args.ts_col].min()).total_seconds()
         print(f"[Data] Duration: {duration:.1f}s ({duration/60:.1f} min)")
         print(f"[Data] Unique tags: {df['TAGNAME'].nunique()}")
+
+    # Auto-generate NodeSet if requested
+    if args.auto_nodeset:
+        # Import here to avoid circular dependency
+        from .csv_to_nodeset import generate_nodeset_from_dataframe
+        
+        # Determine root name
+        if args.root_name:
+            root_name = args.root_name
+        else:
+            # Derive from filename
+            import os
+            basename = os.path.basename(data_file)
+            root_name = os.path.splitext(basename)[0].replace("-", "_").replace(" ", "_")
+        
+        # Generate output path
+        data_dir = os.path.dirname(os.path.abspath(data_file))
+        auto_nodeset_path = os.path.join(data_dir, f"{root_name}_auto_nodeset.xml")
+        
+        if not args.quiet:
+            print(f"[Auto-NodeSet] Generating from {len(df['TAGNAME'].unique())} unique tags...")
+        
+        # Extract unique tag definitions from data
+        tag_defs = df[['TAGNAME', 'DATATYPE', 'TAGVALUE']].drop_duplicates(subset=['TAGNAME'])
+        
+        # Generate NodeSet XML
+        xml_content = generate_nodeset_from_dataframe(
+            df=tag_defs,
+            root_name=root_name,
+            namespace_index=1,  # Always generate as ns=1 (becomes ns=2 on server)
+            namespace_uri=args.namespace_uri,
+            split_regex=r"\.",
+            no_folders=False,
+        )
+        
+        # Save to file
+        with open(auto_nodeset_path, "w", encoding="utf-8") as f:
+            f.write(xml_content)
+        
+        if not args.quiet:
+            print(f"[Auto-NodeSet] ✓ Generated: {auto_nodeset_path}")
+            print(f"[Auto-NodeSet] Tip: Reuse with --nodeset {auto_nodeset_path} for faster startup")
+        
+        args.nodeset = auto_nodeset_path
 
     server = Server()
     server.set_endpoint(args.endpoint)

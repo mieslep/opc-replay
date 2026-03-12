@@ -5,6 +5,55 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-03-12
+
+### Added - Hardening & Usability Improvements
+- **opc-client CLI tool** - First-class monitoring command for demonstrating server functionality
+  - Auto-discover namespaces and variables
+  - Monitor tag value changes in real-time
+  - Flexible polling configuration
+  - Entry point: `opc-client`
+- **Auto-generate NodeSets** - Generate OPC UA NodeSet XML automatically from data files
+  - New `--auto-nodeset` flag on `opc-replay` command
+  - Saves generated NodeSet for reuse (faster subsequent startups)
+  - Optional `--root-name` and `--namespace-uri` customization
+- **Comprehensive examples/README.md** - Clear documentation of example files and quick start
+- **demo_client.py** - Simple Python example showing OPC UA client usage
+- **Improved documentation structure**:
+  - README.md restructured as marketing/overview (concise, user-focused)
+  - examples/USAGE.md expanded as comprehensive developer guide
+  - examples/README.md for quick example file reference
+
+### Changed
+- **Refactored csv_to_nodeset.py** - Extracted core logic into reusable `generate_nodeset_from_dataframe()` function
+  - Enables programmatic NodeSet generation
+  - CLI remains available via `python -m opc_replay.csv_to_nodeset`
+  - Improved help text and error messages
+- **Test improvements** - Replaced hardcoded test data references with example files
+  - test_load_logic.py now uses examples/simple-data.csv
+  - test_override.py updated to use simple example tags (Temperature, Pressure, Flow)
+  - Reduced warmup time from 15s to 3s for faster testing
+  - Added clear documentation of test requirements
+- **Updated module docstrings** - Server.py cleaned up to remove outdated script name references
+- **Terminology clarification** - Removed confusing "tag catalog" concept throughout codebase and docs
+
+### Fixed
+- NodeSet requirement now properly validated (require either `--nodeset` or `--auto-nodeset`)
+- Test brittleness eliminated by using consistent example data
+- Documentation redundancy reduced by clear separation of concerns
+
+### Documentation
+- Restructured README.md to 180 lines (was 500+) focused on overview and quick start
+- examples/USAGE.md provides comprehensive command reference and patterns
+- examples/README.md explains example files and provides quick tutorials
+- Architecture diagram added to README
+- Clear links between documentation files
+
+### Compatibility
+- **Backward compatible** - All existing functionality preserved
+- No breaking changes to command-line arguments
+- New `--auto-nodeset` is optional; explicit `--nodeset` still supported
+
 ## [0.2.0] - 2026-03-12
 
 ### Added - Real-Time Tag Injection (Major Feature)
