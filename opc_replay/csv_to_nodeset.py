@@ -1,0 +1,281 @@
+import argparse
+import pandas as pd
+import xml.etree.ElementTree as ET
+from xml.dom import minidom
+import re
+from datetime import date
+
+# ---- UA namespaces ----
+NS_UA  = "http://opcfoundation.org/UA/2011/03/UANodeSet.xsd"
+NS_UAX = "http://opcfoundation.org/UA/2008/02/Types.xsd"
+NS_XSI = "http://www.w3.org/2001/XMLSchema-instance"
+ET.register_namespace("", NS_UA)
+ET.register_namespace("uax", NS_UAX)
+ET.register_namespace("xsi", NS_XSI)
+
+# ---- UA built-in datatypes ----
+UA_BUILTIN = {
+    "Boolean":"ns=0;i=1",
+    "SByte":"ns=0;i=2",
+    "Byte":"ns=0;i=3",
+    "Int16":"ns=0;i=4",
+    "UInt16":"ns=0;i=5",
+    "Int32":"ns=0;i=6",
+    "UInt32":"ns=0;i=7",
+    "Int64":"ns=0;i=8",
+    "UInt64":"ns=0;i=9",
+    "Float":"ns=0;i=10",
+    "Double":"ns=0;i=11",
+    "String":"ns=0;i=12",
+    "DateTime":"ns=0;i=13",
+}
+
+UAX_TAG = {
+    "Boolean":"Boolean",
+    "SByte":"SByte",
+    "Byte":"Byte",
+    "Int16":"Int16",
+    "UInt16":"UInt16",
+    "Int32":"Int32",
+    "UInt32":"UInt32",
+    "Int64":"Int64",
+    "UInt64":"UInt64",
+    "Float":"Float",
+    "Double":"Double",
+    "String":"String",
+    "DateTime":"DateTime",
+}
+
+# ---- standard nodes/types ----
+OBJECTS_FOLDER = "ns=0;i=85"
+FOLDER_TYPE = "ns=0;i=61"
+BASE_DATA_VARIABLE_TYPE = "ns=0;i=63"
+ORGANIZES = "Organizes"
+HAS_TYPE_DEFINITION = "HasTypeDefinition"
+
+def is_canonical_nodeid(s: str) -> bool:
+    s = (s or "").strip()
+    return bool(re.match(r"^ns=\d+;[isgb]=.+$", s))
+
+def pretty_xml(elem) -> str:
+    raw = ET.tostring(elem, encoding="utf-8")
+    return minidom.parseString(raw).toprettyxml(indent="  ")
+
+def add_ref(refs, ref_type: str, target: str, is_forward=True):
+    attrib = {"ReferenceType": ref_type}
+    if not is_forward:
+        attrib["IsForward"] = "false"
+    r = ET.SubElement(refs, f"{{{NS_UA}}}Reference", attrib)
+    r.text = target
+
+def extract_s_string(nodeid: str) -> str:
+    """
+    Extracts the String identifier part from NodeId like:
+      ns=2;s=Area.Device.Tag
+    Returns 'Area.Device.Tag' (or the full string if not matched).
+    """
+    m = re.search(r";s=(.*)$", str(nodeid))
+    return m.group(1) if m else str(nodeid)
+
+def cast_text(value, dtype: str) -> str:
+    if pd.isna(value):
+        return ""
+    if dtype in ("Float","Double"):
+        return str(float(value))
+    if dtype in ("Int16","UInt16","Int32","UInt32","Int64","UInt64","SByte","Byte"):
+        return str(int(float(value)))
+    if dtype == "Boolean":
+        s = str(value).strip().lower()
+        return "true" if s in ("1","true","t","yes","y") else "false"
+    return str(value)
+
+def main():
+    ap = argparse.ArgumentParser(description="Convert tag catalog CSV into OPC UA NodeSet2 XML")
+    ap.add_argument("--csv", required=True, help="Input CSV with TAGNAME,TAGVALUE,DATATYPE (at minimum)")
+    ap.add_argument("--out", required=True, help="Output .xml NodeSet file")
+    ap.add_argument("--root-name", required=True, help="Root object name (e.g., PET001, PET004)")
+    ap.add_argument("--namespace-index", type=int, default=None,
+                    help="Namespace index used in TAGNAME NodeIds. If not specified, auto-detected from CSV.")
+    ap.add_argument("--namespace-uri", default=None,
+                    help="Namespace URI for that index. Default: urn:<root-name>:tags")
+    ap.add_argument("--split-regex", default=r"\.",
+                    help=r"Regex used to split the ;s= string into folders. Default '\.' (dot)")
+    ap.add_argument("--no-folders", action="store_true",
+                    help="If set, do not create folder hierarchy; put all variables under root")
+    args = ap.parse_args()
+
+    ns_uri = args.namespace_uri or f"urn:{args.root_name.lower()}:tags"
+
+    df = pd.read_csv(args.csv)
+
+    # Defensive: ensure required columns exist
+    for col in ("TAGNAME", "DATATYPE"):
+        if col not in df.columns:
+            raise ValueError(f"Missing required column: {col}")
+    if "TAGVALUE" not in df.columns:
+        df["TAGVALUE"] = ""
+
+    # De-dup (tag catalog should be unique)
+    df = df.drop_duplicates(subset=["TAGNAME"]).copy()
+
+    # Filter non-canonical NodeIds
+    df["TAGNAME"] = df["TAGNAME"].astype(str).str.strip()
+    bad = df.loc[~df["TAGNAME"].map(is_canonical_nodeid), "TAGNAME"].unique().tolist()
+    df = df[df["TAGNAME"].map(is_canonical_nodeid)].copy()
+
+    print(f"Skipping {len(bad)} non-canonical TAGNAMEs (examples: {bad[:10]})")
+    
+    if df.empty:
+        raise ValueError("No valid TAGNAMEs found in CSV")
+    
+    # Auto-detect namespace index from CSV if not specified
+    if args.namespace_index is None:
+        ns_indices = set()
+        for tagname in df["TAGNAME"]:
+            match = re.match(r"^ns=(\d+);", str(tagname))
+            if match:
+                ns_indices.add(int(match.group(1)))
+        
+        if len(ns_indices) == 0:
+            raise ValueError("Could not detect namespace index from TAGNAMEs. Use --namespace-index.")
+        elif len(ns_indices) > 1:
+            print(f"Warning: Multiple namespace indices found in CSV: {sorted(ns_indices)}")
+            csv_ns = max(ns_indices)
+            print(f"CSV uses highest index: ns={csv_ns}")
+        else:
+            csv_ns = ns_indices.pop()
+            print(f"CSV uses namespace index: ns={csv_ns}")
+        
+        # Always generate nodeset for ns=1 (will land at server ns=2 after freeopcua's ns=1)
+        # This avoids creating placeholder namespaces
+        args.namespace_index = 1
+        print(f"Generating nodeset for ns=1 (will appear as server ns=2 to match CSV)")
+    else:
+        # Validate that specified index matches CSV
+        print(f"Using specified namespace index: {args.namespace_index}")
+        csv_indices = set()
+        for tagname in df["TAGNAME"]:
+            match = re.match(r"^ns=(\d+);", str(tagname))
+            if match:
+                csv_indices.add(int(match.group(1)))
+        
+        if csv_indices and args.namespace_index not in csv_indices:
+            print(f"Warning: Specified --namespace-index {args.namespace_index} not found in CSV TAGNAMEs.")
+            print(f"         CSV contains indices: {sorted(csv_indices)}")
+            print(f"         This will cause namespace mismatch issues!")
+
+    # Build NodeSet root
+    root = ET.Element(f"{{{NS_UA}}}UANodeSet")
+
+    # NamespaceUris:
+    # We include placeholders up to namespace-index so indexes line up.
+    ns_uris = ET.SubElement(root, f"{{{NS_UA}}}NamespaceUris")
+    # ns=1 placeholder always, then set ns=<namespace-index> URI
+    # (If namespace-index == 1, this will be the real one)
+    max_idx = max(1, args.namespace_index)
+    for i in range(1, max_idx + 1):
+        uri = "urn:placeholder:ns1"
+        if i == args.namespace_index:
+            uri = ns_uri
+        ET.SubElement(ns_uris, f"{{{NS_UA}}}Uri").text = uri
+
+    # Models (optional but nice)
+    models = ET.SubElement(root, f"{{{NS_UA}}}Models")
+    ET.SubElement(models, f"{{{NS_UA}}}Model", {
+        "ModelUri": ns_uri,
+        "PublicationDate": str(date.today()),
+        "Version": "1.0.0",
+    })
+
+    # Root object under Objects
+    root_obj_nodeid = f"ns={args.namespace_index};s={args.root_name}"
+    root_obj = ET.SubElement(root, f"{{{NS_UA}}}UAObject", {
+        "NodeId": root_obj_nodeid,
+        "BrowseName": f"{args.namespace_index}:{args.root_name}",
+    })
+    ET.SubElement(root_obj, f"{{{NS_UA}}}DisplayName").text = args.root_name
+    refs = ET.SubElement(root_obj, f"{{{NS_UA}}}References")
+    add_ref(refs, ORGANIZES, OBJECTS_FOLDER, is_forward=False)
+    add_ref(refs, HAS_TYPE_DEFINITION, FOLDER_TYPE, is_forward=True)
+
+    # Optional folder hierarchy
+    folders = {"": root_obj_nodeid}
+
+    def ensure_folder(path_parts):
+        cur_path = ""
+        parent_nodeid = root_obj_nodeid
+        for part in path_parts:
+            cur_path = f"{cur_path}/{part}" if cur_path else part
+            if cur_path in folders:
+                parent_nodeid = folders[cur_path]
+                continue
+
+            folder_nodeid = f"ns={args.namespace_index};s=folder:{args.root_name}/{cur_path}"
+            obj = ET.SubElement(root, f"{{{NS_UA}}}UAObject", {
+                "NodeId": folder_nodeid,
+                "BrowseName": f"{args.namespace_index}:{part}",
+            })
+            ET.SubElement(obj, f"{{{NS_UA}}}DisplayName").text = part
+            r = ET.SubElement(obj, f"{{{NS_UA}}}References")
+            add_ref(r, ORGANIZES, parent_nodeid, is_forward=False)
+            add_ref(r, HAS_TYPE_DEFINITION, FOLDER_TYPE, is_forward=True)
+
+            folders[cur_path] = folder_nodeid
+            parent_nodeid = folder_nodeid
+        return parent_nodeid
+
+    splitter = re.compile(args.split_regex)
+
+    # Create variables
+    for _, row in df.iterrows():
+        nodeid = str(row["TAGNAME"])
+        dtype  = str(row.get("DATATYPE", "String"))
+        value  = row.get("TAGVALUE", "")
+
+        # Rewrite node ID to use target namespace index
+        # CSV might have ns=2, but we're generating for args.namespace_index (e.g., ns=1)
+        nodeid_match = re.match(r"^ns=(\d+);(.+)$", nodeid)
+        if nodeid_match:
+            nodeid = f"ns={args.namespace_index};{nodeid_match.group(2)}"
+
+        datatype_nodeid = UA_BUILTIN.get(dtype, "ns=0;i=12")  # fallback String
+        s_part = extract_s_string(nodeid)
+
+        if args.no_folders:
+            parent = root_obj_nodeid
+            leaf_name = s_part.split("/")[-1]
+        else:
+            parts = [p for p in splitter.split(s_part) if p]
+            if len(parts) <= 1:
+                parent = root_obj_nodeid
+                leaf_name = parts[0] if parts else s_part
+            else:
+                parent = ensure_folder(parts[:-1])
+                leaf_name = parts[-1]
+
+        var = ET.SubElement(root, f"{{{NS_UA}}}UAVariable", {
+            "NodeId": nodeid,
+            "BrowseName": f"{args.namespace_index}:{leaf_name}",
+            "DataType": datatype_nodeid,
+            "AccessLevel": "3",
+            "UserAccessLevel": "3",
+        })
+        ET.SubElement(var, f"{{{NS_UA}}}DisplayName").text = leaf_name
+
+        r = ET.SubElement(var, f"{{{NS_UA}}}References")
+        add_ref(r, ORGANIZES, parent, is_forward=False)
+        add_ref(r, HAS_TYPE_DEFINITION, BASE_DATA_VARIABLE_TYPE, is_forward=True)
+
+        # Initial value snapshot (optional but useful)
+        val = ET.SubElement(var, f"{{{NS_UA}}}Value")
+        tag = UAX_TAG.get(dtype, "String")
+        v = ET.SubElement(val, f"{{{NS_UAX}}}{tag}")
+        v.text = cast_text(value, dtype)
+
+    with open(args.out, "w", encoding="utf-8") as f:
+        f.write(pretty_xml(root))
+
+    print(f"Wrote {args.out} with {len(df)} variables, root={args.root_name}, ns={args.namespace_index} uri={ns_uri}")
+
+if __name__ == "__main__":
+    main()
