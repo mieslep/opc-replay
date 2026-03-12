@@ -209,10 +209,10 @@ Run time: ~0.6 seconds (all tests are fast with mocked dependencies)
 
 ## Integration Tests
 
-Previous integration test scripts have been moved to [examples/integration_tests/](../examples/integration_tests/):
+Integration tests are in [tests/integration/](integration/) and test the full system with a real OPC UA server:
 
 - `test_override.py` - Full override injection workflow
-- `test_client.py` - OPC UA client connection and tag monitoring
+- `test_client.py` - OPC UA client connection and tag monitoring  
 - `test_load_logic.py` - Data loading validation
 
-These can still be run manually but are not part of the pytest suite.
+These are part of the pytest suite and run automatically with `pytest tests/`.

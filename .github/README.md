@@ -72,7 +72,7 @@ You have two options:
 Run all CI checks at once:
 
 ```bash
-./run_ci_locally.sh
+./scripts/run_ci_locally.sh
 ```
 
 This script runs the exact same checks as the GitHub Actions CI workflow.
@@ -99,5 +99,5 @@ uv run python -m build
 Add this badge to your README.md to show CI status:
 
 ```markdown
-[![CI](https://github.com/phil/opc-replay/actions/workflows/ci.yml/badge.svg)](https://github.com/phil/opc-replay/actions/workflows/ci.yml)
+[![CI](https://github.com/mieslep/opc-replay/actions/workflows/ci.yml/badge.svg)](https://github.com/mieslep/opc-replay/actions/workflows/ci.yml)
 ```

@@ -145,11 +145,3 @@ def require_opcua_server(opcua_server_available):
     """Fixture that skips test if OPC UA server is not available."""
     if not opcua_server_available:
         pytest.skip("OPC UA server not available (requires server running on localhost:4840)")
-
-
-# Mark to skip integration tests when server is not available
-# NOTE: This is deprecated - use opcua_test_server fixture instead for automated server
-skip_if_no_server = pytest.mark.skipif(
-    not is_server_available(),
-    reason="OPC UA server not available (requires server running on localhost:4840)",
-)

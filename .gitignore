@@ -42,9 +42,10 @@ Thumbs.db
 *.log
 *.tmp
 *.bak
+*_auto_nodeset.xml
 
 # Linting/formatting
 .ruff_cache/
 
 # uv
-uv.lock
+# Note: uv.lock should be committed for reproducible builds

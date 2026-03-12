@@ -158,5 +158,5 @@ ns=2;s=Pressure,200.5,5,20,Float
 
 For issues or questions:
 - Check the [troubleshooting guide](USAGE.md#troubleshooting) in USAGE.md
-- Visit the [GitHub repository](https://github.com/phil/opc-replay)
+- Visit the [GitHub repository](https://github.com/mieslep/opc-replay)
 - Review the main [README](../README.md)

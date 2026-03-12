@@ -11,12 +11,6 @@ A Python-based OPC UA replay server for replaying historical timestamped tag dat
 
 ## Installation
 
-### Install from PyPI (coming soon)
-
-```bash
-pip install opc-replay
-```
-
 ### Install from Source
 
 ```bash
@@ -223,7 +217,7 @@ Integration examples in Python, JavaScript, curl, and more are in [examples/USAG
 
 ## Contributing
 
-Contributions welcome! Please feel free to submit issues or pull requests.
+Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing guidelines, and how to submit pull requests.
 
 ## License
 

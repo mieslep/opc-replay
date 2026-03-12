@@ -5,7 +5,7 @@ description = "OPC UA replay server for replaying historical data from CSV or Pa
 readme = "README.md"
 requires-python = ">=3.13"
 authors = [
-    {name = "Phil", email = "phil@example.com"}
+    {name = "Phil", email = "phil@fortclever.com"}
 ]
 keywords = ["opcua", "opc-ua", "replay", "simulator", "industrial", "automation"]
 classifiers = [
@@ -37,8 +37,8 @@ opc-inject = "opc_replay.inject_tags:main"
 opc-client = "opc_replay.client:main"
 
 [project.urls]
-Homepage = "https://github.com/phil/opc-replay"
-Repository = "https://github.com/phil/opc-replay"
+Homepage = "https://github.com/mieslep/opc-replay"
+Repository = "https://github.com/mieslep/opc-replay"
 
 [build-system]
 requires = ["hatchling"]

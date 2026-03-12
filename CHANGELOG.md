@@ -125,7 +125,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documentation:
   - Comprehensive README.md with installation and usage instructions
   - examples/USAGE.md with detailed examples
-  - test_install.sh for verifying installation
+  - scripts/test_install.sh for verifying installation
 - Package configuration:
   - pyproject.toml with entry point for `opc-replay` command
   - .gitignore for Python projects
@@ -140,8 +140,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned
-- Add unit tests
-- Add GitHub Actions CI/CD
-- Add Docker support
-- Add more data format options
+- Add Docker support for easier deployment
+- Add support for additional data formats (JSON, HDF5)
 - Performance optimizations for large datasets
+- Web-based dashboard for monitoring server status
