@@ -1,0 +1,4 @@
+tagname,value,time_offset_s,duration_s,dtype
+ns=2;s=Temperature,99.9,0,30,Float
+ns=2;s=Pressure,200.5,5,20,Float
+ns=2;s=Flow,50.0,10,15,Float

@@ -1,7 +1,7 @@
 [project]
 name = "opc-replay"
-version = "0.1.0"
-description = "OPC UA replay server for replaying historical data from CSV or Parquet files"
+version = "0.2.0"
+description = "OPC UA replay server for replaying historical data from CSV or Parquet files with real-time tag injection API"
 readme = "README.md"
 requires-python = ">=3.13"
 authors = [
@@ -30,6 +30,7 @@ dev = [
 
 [project.scripts]
 opc-replay = "opc_replay:main"
+opc-inject = "opc_replay.inject_tags:main"
 
 [project.urls]
 Homepage = "https://github.com/phil/opc-replay"

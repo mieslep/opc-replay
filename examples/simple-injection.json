@@ -1,0 +1,25 @@
+{
+  "injections": [
+    {
+      "tagname": "ns=2;s=Temperature",
+      "value": 99.9,
+      "time_offset_s": 0,
+      "duration_s": 30,
+      "dtype": "Float"
+    },
+    {
+      "tagname": "ns=2;s=Pressure",
+      "value": 200.5,
+      "time_offset_s": 5,
+      "duration_s": 20,
+      "dtype": "Float"
+    },
+    {
+      "tagname": "ns=2;s=Flow",
+      "value": 50.0,
+      "time_offset_s": 10,
+      "duration_s": 15,
+      "dtype": "Float"
+    }
+  ]
+}

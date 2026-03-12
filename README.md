@@ -5,12 +5,16 @@ A Python-based OPC UA replay server that replays historical timestamped tag data
 ## Features
 
 - 🔄 **Replay Historical Data** - Replay timestamped OPC UA tag data at real-time speed or accelerated
+- 🎯 **Real-Time Tag Injection** - Override tag values on-the-fly via HTTP REST API while server is running
 - 📊 **Multiple Formats** - Support for both CSV and Parquet data files
 - 🏷️ **NodeSet Import** - Import OPC UA NodeSet2 XML files to define address space
 - ⚡ **Speed Control** - Adjust playback speed (1x real-time, 10x, 100x, etc.)
 - 🔁 **Loop Mode** - Continuously replay data for long-running tests
 - 🛡️ **Robust Handling** - Skip invalid NodeIds and gracefully handle errors
 - 🔧 **Namespace Mapping** - Automatic namespace index remapping when needed
+- 🌐 **HTTP REST API** - Language-agnostic tag injection interface (default port 8080)
+- ⏱️ **Scheduled Overrides** - Set time-delayed injections with configurable duration
+- 📝 **Proper OPC UA Timestamps** - Sets SourceTimestamp and ServerTimestamp for compliance
 
 ## Installation
 
@@ -86,6 +90,7 @@ opc-replay \
 
 - `--endpoint URL` - OPC UA endpoint (default: `opc.tcp://0.0.0.0:4840/`)
 - `--server-name NAME` - Server name (default: `ReplayServer`)
+- `--api-port PORT` - HTTP port for tag injection API (default: `8080`, set to `0` to disable)
 
 ### Error Handling
 
@@ -97,6 +102,233 @@ opc-replay \
 
 - `--warmup N` - Wait N seconds before starting replay
 - `--quiet` - Reduce per-update logging
+
+## Real-Time Tag Injection
+
+The server includes a built-in HTTP REST API for injecting override values to tags while the server is running. This is perfect for:
+- Testing edge cases and failure scenarios
+- Simulating sensor malfunctions or anomalies
+- Injecting events at specific times
+- Interactive simulation control
+
+### Quick Start with Tag Injection
+
+```bash
+# Terminal 1: Start the replay server (API enabled by default on port 8080)
+opc-replay \
+    --nodeset examples/simple-nodeset.xml \
+    --data examples/simple-data.csv \
+    --ts-col TS \
+    --loop
+
+# Terminal 2: Inject a single tag override
+opc-inject \
+    --tag "ns=2;s=Temperature" \
+    --value 99.9 \
+    --duration 30
+
+# Or inject a batch of overrides from a file
+opc-inject --file examples/simple-injection.json
+```
+
+### Tag Injection CLI (`opc-inject`)
+
+The `opc-inject` command provides a convenient CLI for injecting tag overrides:
+
+```bash
+# Single tag injection
+opc-inject --tag "ns=2;s=Temperature" --value 99.9 --duration 30 --dtype Float
+
+# Delayed injection (starts after 10 seconds)
+opc-inject --tag "ns=2;s=Pressure" --value 200.5 --offset 10 --duration 20
+
+# Batch injection from JSON
+opc-inject --file examples/simple-injection.json
+
+# Batch injection from CSV
+opc-inject --file examples/simple-injection.csv
+
+# List active overrides
+opc-inject --list
+
+# Clear all overrides
+opc-inject --clear
+
+# Target different server
+opc-inject --url http://localhost:8080 --tag "ns=2;s=Flow" --value 50.0
+```
+
+#### CLI Options
+
+- `--tag NODEID` - Tag NodeId to inject (e.g., `ns=2;s=Temperature`)
+- `--value VALUE` - Override value to inject
+- `--offset SECONDS` - Delay before activation (default: 0)
+- `--duration SECONDS` - How long to hold override (default: 60)
+- `--dtype TYPE` - Optional data type hint (Float, Int32, Boolean, String, etc.)
+- `--file PATH` - Load injections from CSV or JSON file
+- `--list` - List all active/pending overrides
+- `--clear` - Clear all overrides
+- `--url URL` - Target server URL (default: `http://localhost:8080`)
+
+### HTTP REST API
+
+The injection API provides three endpoints:
+
+#### POST /inject - Add Override(s)
+
+Inject a single tag override:
+```bash
+curl -X POST http://localhost:8080/inject \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tagname": "ns=2;s=Temperature",
+    "value": 99.9,
+    "time_offset_s": 0,
+    "duration_s": 30,
+    "dtype": "Float"
+  }'
+```
+
+Inject multiple overrides at once:
+```bash
+curl -X POST http://localhost:8080/inject \
+  -H "Content-Type: application/json" \
+  -d '{
+    "injections": [
+      {"tagname": "ns=2;s=Temperature", "value": 99.9, "time_offset_s": 0, "duration_s": 30},
+      {"tagname": "ns=2;s=Pressure", "value": 200.5, "time_offset_s": 5, "duration_s": 20}
+    ]
+  }'
+```
+
+**Request Fields:**
+- `tagname` (required): NodeId in canonical format (`ns=X;s=...`)
+- `value` (required): Override value (number, string, or boolean)
+- `time_offset_s` (optional): Seconds to wait before activating (default: 0)
+- `duration_s` (optional): Seconds to hold override (default: 60)
+- `dtype` (optional): Data type hint (Float, Int32, Boolean, String, etc.)
+
+**Response:** `200 OK` with confirmation message
+
+#### GET /inject - List Overrides
+
+List all active and pending overrides:
+```bash
+curl http://localhost:8080/inject
+```
+
+**Response:**
+```json
+{
+  "active": [
+    {
+      "tagname": "ns=2;s=Temperature",
+      "value": 99.9,
+      "dtype": "Float",
+      "activated_at": "2026-03-12T14:30:00.123Z",
+      "expires_at": "2026-03-12T14:30:30.123Z"
+    }
+  ],
+  "pending": [
+    {
+      "tagname": "ns=2;s=Pressure",
+      "value": 200.5,
+      "dtype": "Float",
+      "activates_at": "2026-03-12T14:30:05.123Z",
+      "expires_at": "2026-03-12T14:30:25.123Z"
+    }
+  ]
+}
+```
+
+#### DELETE /inject - Clear All Overrides
+
+Remove all active and pending overrides:
+```bash
+curl -X DELETE http://localhost:8080/inject
+```
+
+**Response:** `200 OK` with count of cleared overrides
+
+### Injection File Formats
+
+#### JSON Format
+
+```json
+{
+  "injections": [
+    {
+      "tagname": "ns=2;s=Temperature",
+      "value": 99.9,
+      "time_offset_s": 0,
+      "duration_s": 30,
+      "dtype": "Float"
+    },
+    {
+      "tagname": "ns=2;s=Pressure",
+      "value": 200.5,
+      "time_offset_s": 5,
+      "duration_s": 20,
+      "dtype": "Float"
+    }
+  ]
+}
+```
+
+#### CSV Format
+
+```csv
+tagname,value,time_offset_s,duration_s,dtype
+ns=2;s=Temperature,99.9,0,30,Float
+ns=2;s=Pressure,200.5,5,20,Float
+ns=2;s=Flow,50.0,10,15,Float
+```
+
+### Python Integration Example
+
+```python
+import requests
+import time
+
+API_URL = "http://localhost:8080/inject"
+
+# Inject a single override
+response = requests.post(API_URL, json={
+    "tagname": "ns=2;s=Temperature",
+    "value": 99.9,
+    "duration_s": 30
+})
+print(response.json())
+
+# Inject multiple overrides
+response = requests.post(API_URL, json={
+    "injections": [
+        {"tagname": "ns=2;s=Temperature", "value": 99.9, "time_offset_s": 0, "duration_s": 30},
+        {"tagname": "ns=2;s=Pressure", "value": 200.5, "time_offset_s": 5, "duration_s": 20}
+    ]
+})
+
+# Wait and check active overrides
+time.sleep(1)
+response = requests.get(API_URL)
+print(response.json())
+
+# Clear all overrides
+response = requests.delete(API_URL)
+print(response.json())
+```
+
+### Disabling the API
+
+If you don't need the injection API, you can disable it:
+
+```bash
+opc-replay \
+    --nodeset examples/simple-nodeset.xml \
+    --data examples/simple-data.csv \
+    --ts-col TS \
+    --api-port 0
+```
 
 ## Data Format Requirements
 

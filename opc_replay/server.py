@@ -1,9 +1,18 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.8"
+# dependencies = [
+#   "pandas",
+#   "pyarrow",
+#   "opcua",
+# ]
+# ///
 """
 OPC UA replay server (Python):
 
 - Imports a UA NodeSet2 XML file (address space / tags)
-- Replays timestamped tag samples from a CSV file at real-time speed (default) or accelerated (e.g. 10x)
+- Replays timestamped tag samples from a CSV or Parquet file at real-time speed (default) or accelerated (e.g. 10x)
+- Exposes an HTTP REST API (default port 8080) for injecting real-time tag value overrides
 
 IMPORTANT REALITY:
 - If the NodeSet XML itself contains invalid NodeIds (e.g. NodeId="PET001CalcAlarm" with no "ns=...;s=..."),
@@ -11,26 +20,41 @@ IMPORTANT REALITY:
 - If you *do not want to "fix" those NodeIds*, the only safe option is to DROP those nodes from the imported NodeSet.
   This script supports that via --drop-bad-nodeset-nodeids.
 
-Separately, the CSV may contain "bad" TAGNAME values; those can be skipped during replay.
+Separately, the data file may contain "bad" TAGNAME values; those can be skipped during replay via --skip-bad-csv.
+
+If the namespace indices (ns=X) in the data file differ from those registered in the server after NodeSet import,
+use --allow-ns-mismatch to enable automatic remapping.
 
 Install:
   python -m pip install opcua pandas pyarrow
 
 Typical usage with CSV:
-  uv run python opcua_nodeset_replay_server.py --nodeset PET001-UANodeSet.xml --data PET001-2025-10-03.csv --ts-col TS
-  uv run python opcua_nodeset_replay_server.py --nodeset PET001-UANodeSet.xml --data PET001-2025-10-03.csv --ts-col TS --speed 10
+  uv run opcua_nodeset_replay_server.py --nodeset PET001-UANodeSet.xml --data PET001-2025-10-03.csv --ts-col TS
+  uv run opcua_nodeset_replay_server.py --nodeset PET001-UANodeSet.xml --data PET001-2025-10-03.csv --ts-col TS --speed 10
 
 Typical usage with Parquet:
-  uv run python opcua_nodeset_replay_server.py --nodeset PETALL-UANodeSet.xml --data PETALL_20251214_20251221.parquet --ts-col TIMESTAMP --speed 10
+  uv run opcua_nodeset_replay_server.py --nodeset PETALL-UANodeSet.xml --data PETALL_20251214_20251221.parquet --ts-col TIMESTAMP --speed 10
 
-Graceful skipping (recommended for your case with PET001CalcAlarm in the NodeSet):
-  uv run python opcua_nodeset_replay_server.py \
+Graceful skipping (for NodeSets with non-canonical NodeIds such as PET001CalcAlarm):
+  uv run opcua_nodeset_replay_server.py \
     --nodeset PET001-UANodeSet.xml \
     --data PET001-2025-10-03.csv \
     --ts-col TS \
     --speed 10 \
     --drop-bad-nodeset-nodeids \
     --skip-bad-csv
+
+Skip ahead in the data and loop forever:
+  uv run opcua_nodeset_replay_server.py \
+    --nodeset PETALL-UANodeSet.xml \
+    --data PETALL_20251214_20251221.parquet \
+    --ts-col TIMESTAMP \
+    --speed 10 \
+    --offset 9100 \
+    --loop
+
+Inject a tag override while the server is running (see inject_tags.py):
+  uv run inject_tags.py --tag "ns=2;s=PET003.PET003.NetstalMachine_01.TH1.TH1517" --value 250.0 --duration 60
 """
 
 import argparse
@@ -38,7 +62,11 @@ import time
 import re
 import tempfile
 import os
+import json
+import threading
 import xml.etree.ElementTree as ET
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from datetime import datetime, timezone
 
 import pandas as pd
 from opcua import ua, Server
@@ -131,6 +159,8 @@ def remap_nodeid(nodeid: str, ns_map: dict[int, int]) -> str:
 
 
 def cast_value(raw, dtype: str):
+    if raw is None:
+        return None
     if pd.isna(raw):
         return None
     dtype = (dtype or "String").strip()
@@ -144,6 +174,288 @@ def cast_value(raw, dtype: str):
     if dtype == "DateTime":
         return pd.to_datetime(raw, errors="coerce").to_pydatetime()
     return str(raw)
+
+
+# ---------------------------------------------------------------------------
+# Tag-injection override store (thread-safe)
+# ---------------------------------------------------------------------------
+
+class OverrideStore:
+    """
+    Thread-safe store of tag overrides.
+    Each override is:
+        tagname        – canonical OPC UA NodeId string (ns=2;s=...)
+        value          – raw value (will be cast using cast_value at write time)
+        activate_at    – epoch when the override becomes active
+        expire_at      – epoch when the override expires
+    """
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._overrides: dict[str, list[dict]] = {}  # tagname -> [override, ...]
+
+    def add(self, tagname: str, value, time_offset_s: float, duration_s: float, dtype: str | None = None):
+        now = time.time()
+        entry = {
+            "tagname": tagname,
+            "value": value,
+            "dtype": dtype,
+            "activate_at": now + time_offset_s,
+            "expire_at": now + time_offset_s + duration_s,
+            "created": now,
+        }
+        with self._lock:
+            self._overrides.setdefault(tagname, []).append(entry)
+        return entry
+
+    def get_active(self, tagname: str):
+        """Return the active override value for *tagname*, or None."""
+        now = time.time()
+        with self._lock:
+            entries = self._overrides.get(tagname)
+            if not entries:
+                return None
+            alive = [e for e in entries if e["expire_at"] > now]
+            if len(alive) != len(entries):
+                if alive:
+                    self._overrides[tagname] = alive
+                else:
+                    del self._overrides[tagname]
+                    return None
+            for e in reversed(alive):
+                if e["activate_at"] <= now:
+                    return e["value"]
+        return None
+
+    def is_overridden(self, tagname: str, remapped: str) -> bool:
+        """Return True if tagname or remapped has an active override.
+        Acquires the lock exactly once for both names.
+        """
+        if not self._overrides:  # fast-path: empty store (GIL-safe dict bool check)
+            return False
+        now = time.time()
+        # Deduplicate: when there is no namespace remapping, both names are identical
+        names = (tagname,) if tagname == remapped else (tagname, remapped)
+        with self._lock:
+            for tag in names:
+                entries = self._overrides.get(tag)
+                if not entries:
+                    continue
+                alive = [e for e in entries if e["expire_at"] > now]
+                if len(alive) != len(entries):
+                    if alive:
+                        self._overrides[tag] = alive
+                    else:
+                        del self._overrides[tag]
+                        continue
+                for e in reversed(alive):
+                    if e["activate_at"] <= now:
+                        return True
+        return False
+
+    def get_all_active(self) -> dict[str, dict]:
+        """Return {tagname: entry} for every currently active override.
+        Used by the background applier thread to push values without waiting
+        for the replay loop to visit each tag's next CSV row.
+        """
+        now = time.time()
+        result: dict[str, dict] = {}
+        with self._lock:
+            dead_keys: list[str] = []
+            for tag, entries in self._overrides.items():
+                alive = [e for e in entries if e["expire_at"] > now]
+                if len(alive) != len(entries):
+                    if alive:
+                        self._overrides[tag] = alive  # replace value — safe during iteration
+                    else:
+                        dead_keys.append(tag)  # key deletion deferred until after loop
+                        continue
+                for e in reversed(alive):
+                    if e["activate_at"] <= now:
+                        result[tag] = e
+                        break
+            for k in dead_keys:
+                del self._overrides[k]
+        return result
+
+    def list_all(self):
+        now = time.time()
+        with self._lock:
+            result = []
+            for tag, entries in self._overrides.items():
+                for e in entries:
+                    if e["expire_at"] <= now:
+                        continue  # skip already-expired entries
+                    result.append({
+                        "tagname": e["tagname"],
+                        "value": e["value"],
+                        "remaining_s": round(e["expire_at"] - now, 2),
+                        "active": e["activate_at"] <= now,
+                        "pending": now < e["activate_at"],
+                    })
+            return result
+
+    def clear(self):
+        with self._lock:
+            self._overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# HTTP API for tag injection
+# ---------------------------------------------------------------------------
+
+class InjectionHandler(BaseHTTPRequestHandler):
+    """
+    Endpoints:
+        POST /inject   – add one or more overrides (JSON body)
+        GET  /inject   – list all active / pending overrides
+        DELETE /inject – clear all overrides
+    """
+
+    override_store: OverrideStore | None = None  # set before server starts
+
+    def log_message(self, format, *args):
+        # Prefix with [API] for clarity in combined log
+        print(f"[API] {self.address_string()} - {format % args}")
+
+    def _send_json(self, obj, code=200):
+        body = json.dumps(obj, default=str).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        assert self.override_store is not None
+        if self.path.rstrip("/") == "/inject":
+            overrides = self.override_store.list_all()
+            self._send_json({"overrides": overrides})
+        else:
+            self._send_json({"error": "Not found"}, 404)
+
+    def do_DELETE(self):
+        assert self.override_store is not None
+        if self.path.rstrip("/") == "/inject":
+            self.override_store.clear()
+            self._send_json({"status": "cleared"})
+        else:
+            self._send_json({"error": "Not found"}, 404)
+
+    def do_POST(self):
+        assert self.override_store is not None
+        if self.path.rstrip("/") != "/inject":
+            self._send_json({"error": "Not found"}, 404)
+            return
+
+        content_length = int(self.headers.get("Content-Length", 0))
+        if content_length == 0:
+            self._send_json({"error": "Empty body"}, 400)
+            return
+
+        raw = self.rfile.read(content_length)
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError as e:
+            self._send_json({"error": f"Invalid JSON: {e}"}, 400)
+            return
+
+        # Accept either a single object or {"injections": [...]}
+        if isinstance(payload, dict) and "injections" in payload:
+            items = payload["injections"]
+        elif isinstance(payload, list):
+            items = payload
+        elif isinstance(payload, dict):
+            items = [payload]
+        else:
+            self._send_json({"error": "Expected JSON object or array"}, 400)
+            return
+
+        results = []
+        for item in items:
+            tagname = item.get("tagname")
+            value = item.get("value")
+            time_offset_s = float(item.get("time_offset_s", 0))
+            duration_s = float(item.get("duration_s", 60))
+            dtype = item.get("dtype")  # optional OPC UA type hint, e.g. "Float"
+            if not tagname:
+                results.append({"error": "Missing tagname"})
+                continue
+            entry = self.override_store.add(tagname, value, time_offset_s, duration_s, dtype=dtype)
+            results.append({
+                "tagname": tagname,
+                "value": value,
+                "activate_at": datetime.fromtimestamp(entry["activate_at"], tz=timezone.utc).isoformat(),
+                "expire_at": datetime.fromtimestamp(entry["expire_at"], tz=timezone.utc).isoformat(),
+                "status": "scheduled",
+            })
+
+        self._send_json({"results": results})
+
+
+def _infer_variant(value, dtype: str | None = None):
+    """Build a ua.Variant from an injected value.
+    Uses the OPC UA dtype name if provided (e.g. 'Float', 'Int32'),
+    otherwise infers from the Python type of *value*.
+    """
+    if dtype and dtype in VARIANT_TYPE:
+        return ua.Variant(cast_value(value, dtype), VARIANT_TYPE[dtype])
+    if isinstance(value, bool):
+        return ua.Variant(value, ua.VariantType.Boolean)
+    if isinstance(value, int):
+        return ua.Variant(value, ua.VariantType.Int64)
+    if isinstance(value, float):
+        return ua.Variant(value, ua.VariantType.Double)
+    return ua.Variant(str(value), ua.VariantType.String)
+
+
+def run_override_applier(
+    store: OverrideStore,
+    server,
+    ns_map: dict,
+    quiet: bool,
+    stop_event: threading.Event,
+    poll_interval_s: float = 0.1,
+):
+    """
+    Background thread: writes all currently-active overrides to OPC UA nodes
+    every *poll_interval_s* seconds (default 100 ms).
+
+    This eliminates the latency caused by waiting for the replay loop to visit
+    the next CSV/parquet row for a given tag.  The replay loop still suppresses
+    writing the CSV value when an override is active, avoiding value flicker.
+    """
+    node_cache: dict = {}
+    while not stop_event.is_set():
+        time.sleep(poll_interval_s)
+        active = store.get_all_active()
+        for tagname, entry in active.items():
+            try:
+                remapped = remap_nodeid(tagname, ns_map)
+                node = node_cache.get(remapped)
+                if node is None:
+                    node = server.get_node(remapped)
+                    node_cache[remapped] = node
+                now = datetime.now(timezone.utc).replace(tzinfo=None)
+                dv = ua.DataValue(_infer_variant(entry["value"], entry.get("dtype")))
+                dv.SourceTimestamp = now
+                dv.ServerTimestamp = now
+                node.set_value(dv)
+            except Exception as ex:
+                if not quiet:
+                    print(f"[OVERRIDE applier error] {tagname}: {ex}")
+
+
+def start_injection_api(store: OverrideStore, port: int, quiet: bool = False):
+    """Launch the injection HTTP API on a daemon thread."""
+    InjectionHandler.override_store = store
+    httpd = HTTPServer(("0.0.0.0", port), InjectionHandler)
+    httpd.timeout = 0.5
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    if not quiet:
+        print(f"[API] Injection API listening on http://0.0.0.0:{port}/inject")
+    return httpd
 
 
 def load_and_prepare_data(data_path: str, ts_col: str, offset: float = 0.0, max_rows: int | None = None):
@@ -291,6 +603,10 @@ def main():
     ap.add_argument("--allow-ns-mismatch", action="store_true",
                     help="Allow namespace index mismatch between data file and server. Automatically maps data namespace indices to server indices. Use this when nodeset was generated with different --namespace-index than data file.")
 
+    # Injection API:
+    ap.add_argument("--api-port", type=int, default=8080,
+                    help="HTTP port for the tag-injection REST API (default: 8080, 0 to disable)")
+
     args = ap.parse_args()
     
     # Support legacy --csv argument
@@ -355,7 +671,7 @@ def main():
     needs_mapping = False
     mismatched_indices = []
     for csv_idx in csv_ns_indices:
-        server_idx = ns_map.get(csv_idx, csv_idx)
+        server_idx = ns_map[csv_idx] if csv_idx in ns_map else csv_idx
         # Check if CSV namespace doesn't exist on server
         if server_idx >= len(ns_array):
             needs_mapping = True
@@ -389,14 +705,33 @@ def main():
             print(f"[Using automatic namespace remapping (--allow-ns-mismatch enabled)]")
         else:
             print(f"[Namespace validation] CSV indices {sorted(csv_ns_indices)} align with server ✓")
+
+    # Pre-compute: if ns_map is identity (all indices unchanged), skip regex on every row
+    _ns_identity = all(k == v for k, v in ns_map.items())
     
+    # Start the tag-injection HTTP API + background override applier
+    override_store = OverrideStore()
+    httpd = None
+    if args.api_port > 0:
+        httpd = start_injection_api(override_store, args.api_port, quiet=args.quiet)
+
+    _applier_stop = threading.Event()
+    _applier_thread = threading.Thread(
+        target=run_override_applier,
+        args=(override_store, server, ns_map, args.quiet, _applier_stop),
+        daemon=True,
+    )
+    _applier_thread.start()
+    if not args.quiet:
+        print("[Override applier] Background thread started (polls every 100 ms)")
+
     try:
         if args.warmup > 0:
             time.sleep(args.warmup)
 
         while True:
             prev = df[args.ts_col].iloc[0]
-            node_cache: dict[str, object] = {}
+            node_cache: dict = {}
             skipped = 0
             written = 0
 
@@ -418,7 +753,12 @@ def main():
                     continue
 
                 # Remap namespace index from CSV to actual server index
-                remapped_tagname = remap_nodeid(tagname, ns_map)
+                remapped_tagname = tagname if _ns_identity else remap_nodeid(tagname, ns_map)
+
+                # If an active injection override exists for this tag, skip the CSV
+                # write entirely — the background applier thread already owns this tag.
+                if override_store.is_overridden(tagname, remapped_tagname):
+                    continue
 
                 try:
                     node = node_cache.get(remapped_tagname)
@@ -428,7 +768,11 @@ def main():
 
                     py_val = cast_value(raw_val, dtype)
                     vtype = VARIANT_TYPE.get(dtype, ua.VariantType.String)
-                    node.set_value(ua.Variant(py_val, vtype))
+                    dv = ua.DataValue(ua.Variant(py_val, vtype))
+                    now = datetime.now(timezone.utc).replace(tzinfo=None)
+                    dv.SourceTimestamp = now
+                    dv.ServerTimestamp = now
+                    node.set_value(dv)
                     written += 1
 
                 except Exception as ex:
@@ -446,6 +790,9 @@ def main():
                 break
 
     finally:
+        _applier_stop.set()
+        if httpd:
+            httpd.shutdown()
         server.stop()
         if tmp_nodeset:
             try:
