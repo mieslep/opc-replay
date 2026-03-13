@@ -475,6 +475,11 @@ TS,Tag1,Tag2,Tag3
 - **tests/README.md**: Testing strategy and guidelines
 - **examples/README.md**: Example usage scenarios
 - **CHANGELOG.md**: Version history and changes
+  - Follow [Keep a Changelog](https://keepachangelog.com/) format
+  - Keep entries concise - consolidate related changes into single bullet points
+  - Use bold section headers: **Added**, **Changed**, **Fixed**, **Removed**
+  - Avoid excessive detail - capture the essence of changes, not implementation specifics
+  - Example: Instead of 5 bullets explaining auto-conversion, use 1 clear bullet: "**Auto-conversion of non-canonical NodeIds** - Simple tag names automatically convert to OPC UA format (use `--flag` to disable)"
 
 ## When Suggesting Code
 
