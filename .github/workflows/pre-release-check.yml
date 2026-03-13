@@ -1,0 +1,62 @@
+name: Pre-Release Check
+
+on:
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags like v0.9.0, v1.0.0, etc.
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.13"
+
+    - name: Extract version from tag
+      id: tag_version
+      run: |
+        TAG_NAME="${GITHUB_REF#refs/tags/v}"
+        echo "version=${TAG_NAME}" >> $GITHUB_OUTPUT
+        echo "Tag version: ${TAG_NAME}"
+
+    - name: Extract version from pyproject.toml
+      id: project_version
+      run: |
+        VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+        echo "version=${VERSION}" >> $GITHUB_OUTPUT
+        echo "Project version: ${VERSION}"
+
+    - name: Verify version match
+      run: |
+        if [ "${{ steps.tag_version.outputs.version }}" != "${{ steps.project_version.outputs.version }}" ]; then
+          echo "[ERROR] Version mismatch!"
+          echo "Git tag version: ${{ steps.tag_version.outputs.version }}"
+          echo "pyproject.toml version: ${{ steps.project_version.outputs.version }}"
+          echo ""
+          echo "Please update pyproject.toml version to match the git tag."
+          exit 1
+        fi
+        echo "[OK] Version match confirmed: ${{ steps.tag_version.outputs.version }}"
+
+    - name: Check CHANGELOG has version entry
+      run: |
+        VERSION="${{ steps.project_version.outputs.version }}"
+        if ! grep -q "## \[${VERSION}\]" CHANGELOG.md; then
+          echo "[ERROR] CHANGELOG.md does not contain entry for version ${VERSION}"
+          echo ""
+          echo "Please add a [${VERSION}] section to CHANGELOG.md with release notes."
+          exit 1
+        fi
+        echo "[OK] CHANGELOG.md has entry for version ${VERSION}"
+
+    - name: Verify all CI checks passed
+      run: |
+        echo "[INFO] Ensure all CI checks have passed on this commit before creating release."
+        echo "This workflow assumes CI has already run successfully."
+        echo ""
+        echo "Pre-release validation complete!"

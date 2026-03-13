@@ -110,6 +110,12 @@ Follow PEP 8 conventions (enforced by ruff), use type hints, and add docstrings 
 3. Push your branch and open a Pull Request with a clear description
 4. Respond to code review feedback
 
+## Releases
+
+Releases are managed by project maintainers and follow a documented process including version bumping, CHANGELOG updates, and automated PyPI publication. For complete details, see [RELEASE_PROCESS.md](RELEASE_PROCESS.md).
+
+Contributors should focus on submitting well-tested, documented pull requests. Release timing and versioning decisions are made by maintainers.
+
 ## Project Structure
 
 ```

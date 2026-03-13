@@ -1,15 +1,13 @@
-name: Publish to PyPI
+name: Publish to TestPyPI
 
 on:
-  release:
-    types: [published]
-  workflow_dispatch:  # Allow manual triggering
+  workflow_dispatch:  # Manual trigger only
 
 jobs:
-  publish:
+  publish-test:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write  # Required for trusted publishing to PyPI
+      id-token: write  # Required for trusted publishing to TestPyPI
       contents: read
 
     steps:
@@ -29,7 +27,9 @@ jobs:
       run: |
         python -m build
 
-    - name: Publish to PyPI
+    - name: Publish to TestPyPI
       uses: pypa/gh-action-pypi-publish@release/v1
-      # Trusted publishing handles authentication (configured in PyPI web UI)
+      with:
+        repository-url: https://test.pypi.org/legacy/
+      # Trusted publishing handles authentication (configured in TestPyPI web UI)
       # No token needed - uses id-token: write permission from job

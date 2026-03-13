@@ -1,5 +1,7 @@
 # OPC Replay Server
 
+[![CI](https://github.com/mieslep/opc-replay/actions/workflows/ci.yml/badge.svg)](https://github.com/mieslep/opc-replay/actions/workflows/ci.yml)
+
 A Python-based OPC UA replay server for replaying historical timestamped tag data from CSV or Parquet files. Perfect for testing, simulation, and development scenarios where you need to reproduce specific OPC UA data sequences.
 
 ## Features

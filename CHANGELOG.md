@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Features Completed
+### Added
+
+### Changed
+
+### Fixed
+
+## [0.9.0] - 2026-03-13
+
+### Added
 - **OPC UA Replay Server** - Replay historical timestamped tag data from CSV/Parquet files
   - Configurable playback speed (1x to 100x+)
   - Loop mode for continuous replay
@@ -36,6 +44,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI/CD with GitHub Actions
 
 ### Coming Soon
-- PyPI publication
 - Docker support
 - Performance optimizations for large datasets
+- Additional data format support (e.g., JSON, InfluxDB)
+
+## Version Links
+
+[Unreleased]: https://github.com/mieslep/opc-replay/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/mieslep/opc-replay/releases/tag/v0.9.0
