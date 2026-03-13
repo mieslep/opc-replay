@@ -179,11 +179,8 @@ curl http://localhost:8080/inject
 curl -X DELETE http://localhost:8080/inject
 ```
 
-Integration examples in Python, JavaScript, curl, and more are in [examples/USAGE.md](examples/USAGE.md).
-
 ## Documentation
 
-- **[examples/USAGE.md](examples/USAGE.md)** - Comprehensive usage guide with detailed examples
 - **[examples/](examples/)** - Sample data files and demonstration scripts
 - **[CHANGELOG.md](CHANGELOG.md)** - Version history and release notes
 

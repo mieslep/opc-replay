@@ -1,7 +1,5 @@
 # Contributing to OPC Replay
 
-Thank you for your interest in contributing to opc-replay! This guide will help you get started with development.
-
 ## Development Setup
 
 ### Prerequisites
@@ -52,7 +50,7 @@ Run specific test suites:
 # Unit tests only (fast, ~0.6 seconds)
 pytest tests/unit -v
 
-# Integration tests only (require OPC UA server)
+# Integration tests only (slower, starts OPC UA server)
 pytest tests/integration -v
 ```
 
@@ -103,62 +101,14 @@ This script runs the same checks as our GitHub Actions CI:
 
 ## Making Changes
 
-### Code Style Guidelines
-
-- Follow PEP 8 conventions (enforced by ruff)
-- Write descriptive variable and function names
-- Add docstrings to public functions and classes
-- Keep functions focused and reasonably sized
-- Use type hints where appropriate
-
-### Testing Guidelines
-
-- Write tests for new features and bug fixes
-- Unit tests should use mocks for external dependencies
-- Integration tests should test the full system
-- Aim for high test coverage of critical paths
-- Tests should be fast and reliable
-
-### Commit Messages
-
-Write clear, descriptive commit messages:
-
-```
-Add support for Parquet data files
-
-- Implement Parquet file reading with pyarrow
-- Add auto-detection of file format from extension
-- Update documentation with Parquet examples
-```
+Follow PEP 8 conventions (enforced by ruff), use type hints, and add docstrings to public APIs. Write tests for new features - unit tests use mocks, integration tests validate the full system.
 
 ## Submitting Pull Requests
 
-1. **Create a feature branch:**
-
-   ```bash
-   git checkout -b feature/my-new-feature
-   ```
-
-2. **Make your changes** and commit them with clear messages
-
-3. **Run tests and linting:**
-
-   ```bash
-   ./scripts/run_ci_locally.sh
-   ```
-
-4. **Push your branch:**
-
-   ```bash
-   git push origin feature/my-new-feature
-   ```
-
-5. **Open a Pull Request** on GitHub with:
-   - Clear description of the changes
-   - Reference to any related issues
-   - Screenshots/examples if applicable
-
-6. **Respond to feedback** from code review
+1. Create a feature branch and make your changes
+2. Run `./scripts/run_ci_locally.sh` to verify tests and linting pass
+3. Push your branch and open a Pull Request with a clear description
+4. Respond to code review feedback
 
 ## Project Structure
 
@@ -178,51 +128,3 @@ opc-replay/
 ├── .github/             # GitHub Actions CI/CD workflows
 └── docs/                # Additional documentation
 ```
-
-## Development Scripts
-
-### scripts/generate_sample_data.py
-
-Generate sample CSV data files for testing:
-
-```bash
-python scripts/generate_sample_data.py
-```
-
-### scripts/test_install.sh
-
-Verify that the package is correctly installed and all commands work:
-
-```bash
-./scripts/test_install.sh
-```
-
-### scripts/run_ci_locally.sh
-
-Run all CI checks locally:
-
-```bash
-./scripts/run_ci_locally.sh
-```
-
-## Getting Help
-
-- **Documentation:** See [README.md](README.md) and [examples/USAGE.md](examples/USAGE.md)
-- **Issues:** Browse existing [GitHub Issues](https://github.com/mieslep/opc-replay/issues)
-- **Questions:** Open a new issue with the "question" label
-
-## Code of Conduct
-
-- Be respectful and constructive in all interactions
-- Welcome newcomers and help them get started
-- Focus on what is best for the project and community
-
-## License
-
-By contributing to opc-replay, you agree that your contributions will be licensed under the same license as the project (see [LICENSE](LICENSE)).
-
-## Recognition
-
-Contributors are recognized in the project's Git history and may be mentioned in release notes for significant contributions.
-
-Thank you for contributing to opc-replay! 🚀

@@ -105,10 +105,7 @@ To use your own data with opc-replay:
 
 ## Documentation
 
-For detailed usage, command reference, and advanced scenarios, see:
-
-- **[USAGE.md](USAGE.md)** - Comprehensive usage guide
-- **[../README.md](../README.md)** - Project overview and installation
+For detailed usage, command reference, and installation instructions, see [../README.md](../README.md).
 
 ## File Format Reference
 
@@ -157,6 +154,5 @@ ns=2;s=Pressure,200.5,5,20,Float
 ## Support
 
 For issues or questions:
-- Check the [troubleshooting guide](USAGE.md#troubleshooting) in USAGE.md
 - Visit the [GitHub repository](https://github.com/mieslep/opc-replay)
 - Review the main [README](../README.md)
