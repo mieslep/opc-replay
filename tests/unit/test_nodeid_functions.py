@@ -102,7 +102,10 @@ class TestCanonicalizeNodeId:
         """Test that already canonical NodeIds are returned unchanged."""
         assert canonicalize_nodeid("ns=2;s=Temperature") == "ns=2;s=Temperature"
         assert canonicalize_nodeid("ns=0;i=85") == "ns=0;i=85"
-        assert canonicalize_nodeid("ns=1;g=12345678-1234-1234-1234-123456789012") == "ns=1;g=12345678-1234-1234-1234-123456789012"
+        assert (
+            canonicalize_nodeid("ns=1;g=12345678-1234-1234-1234-123456789012")
+            == "ns=1;g=12345678-1234-1234-1234-123456789012"
+        )
         assert canonicalize_nodeid("ns=2;b=ABC123") == "ns=2;b=ABC123"
 
     def test_simple_name_converted(self):
@@ -114,7 +117,9 @@ class TestCanonicalizeNodeId:
     def test_dotted_name_converted(self):
         """Test dotted names are wrapped preserving the dots."""
         assert canonicalize_nodeid("Tank.Level") == "ns=2;s=Tank.Level"
-        assert canonicalize_nodeid("PET001.Temperature.Current") == "ns=2;s=PET001.Temperature.Current"
+        assert (
+            canonicalize_nodeid("PET001.Temperature.Current") == "ns=2;s=PET001.Temperature.Current"
+        )
 
     def test_special_characters_preserved(self):
         """Test special characters are preserved in conversion."""

@@ -57,9 +57,21 @@ ORGANIZES = "Organizes"
 HAS_TYPE_DEFINITION = "HasTypeDefinition"
 
 
-def pretty_xml(elem) -> str:
-    raw = ET.tostring(elem, encoding="utf-8")
-    return minidom.parseString(raw).toprettyxml(indent="  ")
+def pretty_xml(elem, compact: bool = False) -> str:
+    """
+    Convert ElementTree to XML string.
+
+    Args:
+        elem: Element tree root
+        compact: If True, skip pretty-printing (faster, smaller files for large nodesets)
+    """
+    if compact:
+        # Skip pretty-printing for large nodesets (faster, smaller files)
+        return ET.tostring(elem, encoding="utf-8").decode("utf-8")
+    else:
+        # Pretty-print for readability (small nodesets)
+        raw = ET.tostring(elem, encoding="utf-8")
+        return minidom.parseString(raw).toprettyxml(indent="  ")
 
 
 def add_ref(refs, ref_type: str, target: str, is_forward=True):
@@ -100,6 +112,7 @@ def generate_nodeset_from_dataframe(
     namespace_uri: str = None,
     split_regex: str = r"\.",
     no_folders: bool = False,
+    compact: bool = None,
 ) -> str:
     """
     Generate OPC UA NodeSet2 XML from a DataFrame with TAGNAME, DATATYPE, and optionally TAGVALUE.
@@ -111,6 +124,8 @@ def generate_nodeset_from_dataframe(
         namespace_uri: Namespace URI (default: urn:<root_name>:tags)
         split_regex: Regex to split tag names into folder hierarchy (default: "\\.")
         no_folders: If True, place all variables under root without folder hierarchy
+        compact: If True, skip pretty-printing for faster generation and smaller files.
+                 If None (default), auto-detect based on tag count (compact for >5000 tags)
 
     Returns:
         XML string of the NodeSet
@@ -148,7 +163,12 @@ def generate_nodeset_from_dataframe(
     if non_canonical:
         examples = non_canonical[:4]
         converted_examples = [canonicalize_nodeid(t, default_ns=namespace_index) for t in examples]
-        pairs = ", ".join([f"'{orig}' -> '{conv}'" for orig, conv in zip(examples, converted_examples, strict=False)])
+        pairs = ", ".join(
+            [
+                f"'{orig}' -> '{conv}'"
+                for orig, conv in zip(examples, converted_examples, strict=False)
+            ]
+        )
         print(f"[Auto-convert] Canonicalized {len(non_canonical)} TAGNAMEs (examples: {pairs})")
 
     if df.empty:
@@ -274,7 +294,11 @@ def generate_nodeset_from_dataframe(
         v = ET.SubElement(val, f"{{{NS_UAX}}}{tag}")
         v.text = cast_text(value, dtype)
 
-    return pretty_xml(root)
+    # Auto-detect compact mode for large nodesets (>5000 tags)
+    if compact is None:
+        compact = len(df) > 5000
+
+    return pretty_xml(root, compact=compact)
 
 
 def main():

@@ -50,9 +50,7 @@ def test_auto_conversion_in_nodeset_generation():
     df = pd.DataFrame(data)
 
     # Generate NodeSet XML
-    xml_string = generate_nodeset_from_dataframe(
-        df, root_name="TestServer", namespace_index=2
-    )
+    xml_string = generate_nodeset_from_dataframe(df, root_name="TestServer", namespace_index=2)
 
     # Verify all tags are present in the XML (with canonical format)
     assert "ns=2;s=Temperature" in xml_string, "Converted 'Temperature' not found"
@@ -71,31 +69,31 @@ def test_auto_conversion_in_nodeset_generation():
 def test_canonicalize_nodeid_function():
     """Test the canonicalize_nodeid function directly"""
     # Test already canonical - should remain unchanged
-    assert (
-        canonicalize_nodeid("ns=2;s=Temperature") == "ns=2;s=Temperature"
-    ), "Canonical should remain unchanged"
+    assert canonicalize_nodeid("ns=2;s=Temperature") == "ns=2;s=Temperature", (
+        "Canonical should remain unchanged"
+    )
     assert canonicalize_nodeid("ns=0;i=85") == "ns=0;i=85", "Integer NodeId should remain unchanged"
 
     # Test non-canonical - should be wrapped
-    assert (
-        canonicalize_nodeid("Temperature") == "ns=2;s=Temperature"
-    ), "Simple name should be wrapped"
-    assert (
-        canonicalize_nodeid("PET001.Flow") == "ns=2;s=PET001.Flow"
-    ), "Dotted name should be wrapped"
-    assert (
-        canonicalize_nodeid("Tank_Level") == "ns=2;s=Tank_Level"
-    ), "Name with underscore should be wrapped"
+    assert canonicalize_nodeid("Temperature") == "ns=2;s=Temperature", (
+        "Simple name should be wrapped"
+    )
+    assert canonicalize_nodeid("PET001.Flow") == "ns=2;s=PET001.Flow", (
+        "Dotted name should be wrapped"
+    )
+    assert canonicalize_nodeid("Tank_Level") == "ns=2;s=Tank_Level", (
+        "Name with underscore should be wrapped"
+    )
 
     # Test custom namespace
-    assert (
-        canonicalize_nodeid("Temperature", default_ns=3) == "ns=3;s=Temperature"
-    ), "Custom namespace should work"
+    assert canonicalize_nodeid("Temperature", default_ns=3) == "ns=3;s=Temperature", (
+        "Custom namespace should work"
+    )
 
     # Test whitespace handling
-    assert (
-        canonicalize_nodeid("  Temperature  ") == "ns=2;s=Temperature"
-    ), "Whitespace should be stripped"
+    assert canonicalize_nodeid("  Temperature  ") == "ns=2;s=Temperature", (
+        "Whitespace should be stripped"
+    )
 
     # Test error on empty
     with pytest.raises(ValueError, match="NodeId cannot be empty"):
@@ -131,17 +129,15 @@ def test_auto_conversion_preserves_all_tags():
     initial_count = len(df)
 
     # Generate NodeSet
-    xml_string = generate_nodeset_from_dataframe(
-        df, root_name="TestServer", namespace_index=2
-    )
+    xml_string = generate_nodeset_from_dataframe(df, root_name="TestServer", namespace_index=2)
 
     # Count variable definitions in XML (each should create one UAVariable)
     variable_count = xml_string.count("<UAVariable")
 
     # All tags should be present (no filtering)
-    assert (
-        variable_count == initial_count
-    ), f"Expected {initial_count} variables, found {variable_count}"
+    assert variable_count == initial_count, (
+        f"Expected {initial_count} variables, found {variable_count}"
+    )
 
     # Spot check a few conversions
     assert "ns=2;s=Tag1" in xml_string
@@ -170,9 +166,7 @@ def test_auto_conversion_with_real_server():
         df["TS"] = pd.to_datetime(df["TS"])
 
         # Generate NodeSet with auto-conversion
-        xml_string = generate_nodeset_from_dataframe(
-            df, root_name="TestServer", namespace_index=2
-        )
+        xml_string = generate_nodeset_from_dataframe(df, root_name="TestServer", namespace_index=2)
 
         # Write NodeSet to temp file
         with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", delete=False) as f:
