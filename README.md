@@ -103,6 +103,7 @@ opc-replay \
 - `--loop` - Loop playback forever
 - `--offset N` - Skip first N seconds
 - `--api-port PORT` - HTTP API port for tag injection (default: 8080, 0 to disable)
+- `--allow-non-canonical` - Allow non-canonical NodeIds without auto-conversion (advanced)
 
 ### `opc-inject` - Tag Injection
 
@@ -127,18 +128,50 @@ opc-inject --clear
 
 ### `opc-client` - Monitoring Client
 
-Connect to an OPC UA server and monitor tag changes (polls continuously by default):
+Connect to an OPC UA server and monitor tag changes with multiple monitoring modes and output formats:
 
 ```bash
-# Connect to local server (polls forever)
+# Subscribe to all changes (default - push-based, efficient)
 opc-client
 
 # Connect to remote server
 opc-client --endpoint opc.tcp://192.168.1.100:4840/
 
-# Monitor specific namespace with limited polls
-opc-client --namespace 2 --poll-count 10 --poll-interval 1
+# Read nodemap statistics and exit
+opc-client --read-nodemap --all-namespaces
+
+# CSV output with periodic summaries
+opc-client --format csv --report-frequency 30 > output.csv
+
+# JSON output
+opc-client --format json > output.json
+
+# Polling mode (legacy - periodic reads)
+opc-client --read-mode poll --poll-interval 2.0
+
+# Show connection statistics
+opc-client --show-stats --report-frequency 15
+
+# Monitor specific namespace
+opc-client --namespace 2
 ```
+
+**Monitoring Modes:**
+- `--read-mode subscribe` (default) - Push-based subscriptions, efficient for thousands of tags
+- `--read-mode poll` - Periodic polling, legacy mode
+
+**Output Formats:**
+- `--format console` (default) - Human-readable tables
+- `--format csv` - CSV rows (timestamp,node_id,browse_name,value)
+- `--format json` - Line-delimited JSON (JSONL)
+
+**Additional Options:**
+- `--read-nodemap` - Print nodemap statistics and exit (no monitoring)
+- `--all-namespaces` - Browse all namespaces (ns=0,1,2,...)
+- `--report-frequency N` - Quiet mode: show summaries every N seconds
+- `--show-stats` - Display connection statistics (uptime, reads, changes, errors)
+- `--namespace N` - Monitor specific namespace index
+- `--namespace-uri URI` - Monitor by namespace URI
 
 ## Data Format
 
@@ -158,6 +191,30 @@ ns=2;s=Temperature,20.5,Float,2026-01-01T10:00:00Z
 ns=2;s=Pressure,101.3,Float,2026-01-01T10:00:00Z
 ns=2;s=Flow,15.2,Float,2026-01-01T10:00:00Z
 ```
+
+### Auto-Conversion of NodeIds
+
+By default, `opc-replay` automatically converts non-canonical TAGNAMEs to canonical OPC UA format:
+
+```csv
+# Input data with mixed formats:
+TAGNAME,TAGVALUE,DATATYPE,TS
+Temperature,20.5,Float,2026-01-01T10:00:00Z           # Auto-converted to: ns=2;s=Temperature
+ns=2;s=Pressure,101.3,Float,2026-01-01T10:00:00Z      # Already canonical, used as-is
+PET001.Flow,15.2,Float,2026-01-01T10:00:00Z           # Auto-converted to: ns=2;s=PET001.Flow
+```
+
+**Canonical Format:** `ns=<namespace>;[isgb]=<identifier>`
+- `ns=` - Namespace index (e.g., `ns=2`)
+- Identifier type: `s=` (string), `i=` (integer), `g=` (GUID), `b=` (bytestring)
+- Example: `ns=2;s=Tank.Level.Current`
+
+**Benefits:**
+- Works with legacy data that uses simple tag names
+- No need to pre-process your CSV files
+- Proper OPC UA compliance by default
+
+**Advanced:** Use `--allow-non-canonical` to disable auto-conversion if your OPC UA client supports non-standard NodeIds.
 
 ## Use Cases
 

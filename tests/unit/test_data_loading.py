@@ -52,8 +52,8 @@ class TestLoadAndPrepareDataBasic:
         assert df["TS"].iloc[0].tzinfo is not None
         assert str(df["TS"].iloc[0].tzinfo) == "UTC"
 
-    def test_data_sorted_by_timestamp(self, tmp_path):
-        """Test data is sorted by timestamp."""
+    def test_data_not_automatically_sorted(self, tmp_path):
+        """Test data is NOT automatically sorted (performance optimization)."""
         # Create CSV with unsorted timestamps
         csv_content = """TAGNAME,TAGVALUE,DATATYPE,TS
 ns=2;s=Tag1,3,Float,2026-01-01T10:00:02Z
@@ -65,10 +65,11 @@ ns=2;s=Tag3,2,Float,2026-01-01T10:00:01Z
 
         df = load_and_prepare_data(str(csv_file), "TS")
 
-        # Should be sorted
-        assert df["TAGVALUE"].iloc[0] == 1
-        assert df["TAGVALUE"].iloc[1] == 2
-        assert df["TAGVALUE"].iloc[2] == 3
+        # Data should remain in original order (not sorted by default)
+        assert len(df) == 3
+        assert df["TAGVALUE"].iloc[0] == 3
+        assert df["TAGVALUE"].iloc[1] == 1
+        assert df["TAGVALUE"].iloc[2] == 2
 
     def test_tagname_normalized_to_string(self, temp_csv_file):
         """Test TAGNAME column is normalized to string."""
@@ -416,3 +417,92 @@ ns=2;s=Tag3,3,Float,2026-01-01 10:00:02
 
         # All valid formats should be parsed
         assert len(df) >= 2  # At least the first two should parse
+
+
+@pytest.mark.unit
+class TestLoadAndPrepareDataSortAndSave:
+    """Test sort_and_save parameter functionality."""
+
+    def test_sort_and_save_creates_sorted_csv(self, tmp_path):
+        """Test sort_and_save creates a sorted CSV file."""
+        # Create CSV with unsorted timestamps
+        csv_content = """TAGNAME,TAGVALUE,DATATYPE,TS
+ns=2;s=Tag1,3,Float,2026-01-01T10:00:02Z
+ns=2;s=Tag2,1,Float,2026-01-01T10:00:00Z
+ns=2;s=Tag3,2,Float,2026-01-01T10:00:01Z
+"""
+        csv_file = tmp_path / "unsorted.csv"
+        csv_file.write_text(csv_content)
+
+        df = load_and_prepare_data(str(csv_file), "TS", sort_and_save=True)
+
+        # Check sorted file was created
+        sorted_file = tmp_path / "unsorted_sorted.csv"
+        assert sorted_file.exists()
+
+        # Load sorted file and verify it's sorted
+        df_sorted = pd.read_csv(sorted_file)
+        assert df_sorted["TAGVALUE"].iloc[0] == 1
+        assert df_sorted["TAGVALUE"].iloc[1] == 2
+        assert df_sorted["TAGVALUE"].iloc[2] == 3
+
+    def test_sort_and_save_creates_sorted_parquet(self, tmp_path):
+        """Test sort_and_save creates a sorted Parquet file."""
+        # Create Parquet with unsorted data
+        import pandas as pd
+
+        df_unsorted = pd.DataFrame(
+            {
+                "TAGNAME": ["ns=2;s=Tag1", "ns=2;s=Tag2", "ns=2;s=Tag3"],
+                "TAGVALUE": [3, 1, 2],
+                "DATATYPE": ["Float", "Float", "Float"],
+                "TS": [
+                    "2026-01-01T10:00:02Z",
+                    "2026-01-01T10:00:00Z",
+                    "2026-01-01T10:00:01Z",
+                ],
+            }
+        )
+        parquet_file = tmp_path / "unsorted.parquet"
+        df_unsorted.to_parquet(parquet_file, index=False)
+
+        df = load_and_prepare_data(str(parquet_file), "TS", sort_and_save=True)
+
+        # Check sorted file was created
+        sorted_file = tmp_path / "unsorted_sorted.parquet"
+        assert sorted_file.exists()
+
+        # Load sorted file and verify it's sorted
+        df_sorted = pd.read_parquet(sorted_file)
+        assert df_sorted["TAGVALUE"].iloc[0] == 1
+        assert df_sorted["TAGVALUE"].iloc[1] == 2
+        assert df_sorted["TAGVALUE"].iloc[2] == 3
+
+    def test_sort_and_save_false_skips_sort(self, tmp_path):
+        """Test sort_and_save=False does not create sorted file."""
+        csv_content = """TAGNAME,TAGVALUE,DATATYPE,TS
+ns=2;s=Tag1,3,Float,2026-01-01T10:00:02Z
+ns=2;s=Tag2,1,Float,2026-01-01T10:00:00Z
+"""
+        csv_file = tmp_path / "unsorted.csv"
+        csv_file.write_text(csv_content)
+
+        df = load_and_prepare_data(str(csv_file), "TS", sort_and_save=False)
+
+        # Check sorted file was NOT created
+        sorted_file = tmp_path / "unsorted_sorted.csv"
+        assert not sorted_file.exists()
+
+    def test_sort_and_save_default_false(self, tmp_path):
+        """Test sort_and_save defaults to False."""
+        csv_content = """TAGNAME,TAGVALUE,DATATYPE,TS
+ns=2;s=Tag1,1,Float,2026-01-01T10:00:00Z
+"""
+        csv_file = tmp_path / "test.csv"
+        csv_file.write_text(csv_content)
+
+        df = load_and_prepare_data(str(csv_file), "TS")
+
+        # Check sorted file was NOT created (default behavior)
+        sorted_file = tmp_path / "test_sorted.csv"
+        assert not sorted_file.exists()

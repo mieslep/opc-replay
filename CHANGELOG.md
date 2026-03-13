@@ -8,10 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Auto-conversion of non-canonical NodeIds** - Simple tag names like `MySimpleTag` automatically convert to `ns=2;s=MySimpleTag` format (use `--allow-non-canonical` to disable)
+- **Enhanced OPC client** - Statistics tracking (`--show-stats`), verbose mode (`--verbose`), and improved monitoring with configurable report frequency
+- **Performance improvements** - Faster startup with compact NodeSet generation and optimized data loading
 
 ### Changed
-
-### Fixed
+- **BREAKING:** Removed `--skip-bad-csv` and `--drop-bad-nodeset-nodeids` flags (no longer needed with auto-conversion)
 
 ## [0.9.0] - 2026-03-13
 

@@ -66,22 +66,120 @@ def is_canonical_nodeid(s: str) -> bool:
     return bool(re.match(r"^ns=\d+;[isgb]=.+$", s))
 
 
+def canonicalize_nodeid(s: str, default_ns: int = 2) -> str:
+    """
+    Convert a possibly non-canonical NodeId string to canonical form.
+
+    If already canonical (ns=X;Y=...), returns unchanged.
+    Otherwise, wraps the string as ns={default_ns};s={string}.
+
+    Examples:
+        canonicalize_nodeid("ns=2;s=Temperature") -> "ns=2;s=Temperature"
+        canonicalize_nodeid("PET001CalcAlarm") -> "ns=2;s=PET001CalcAlarm"
+        canonicalize_nodeid("Tank.Level") -> "ns=2;s=Tank.Level"
+
+    Args:
+        s: NodeId string (may or may not be canonical)
+        default_ns: Namespace index to use for non-canonical NodeIds (default: 2)
+
+    Returns:
+        Canonical NodeId string
+
+    Raises:
+        ValueError: If input is None, empty, or whitespace-only
+    """
+    s = (s or "").strip()
+    if not s:
+        raise ValueError("NodeId cannot be empty or whitespace-only")
+
+    # Already canonical - return as-is
+    if is_canonical_nodeid(s):
+        return s
+
+    # Non-canonical - wrap as string identifier
+    return f"ns={default_ns};s={s}"
+
+
+def count_variables_in_nodeset(xml_path: str) -> int:
+    """
+    Count the number of UAVariable elements in a NodeSet XML file.
+    This is much faster than scanning DataFrame for unique tags.
+    """
+    import xml.etree.ElementTree as ET
+
+    tree = ET.parse(xml_path)
+    root = tree.getroot()
+
+    # Count UAVariable elements (namespace-aware)
+    ns = {"ua": "http://opcfoundation.org/UA/2011/03/UANodeSet.xsd"}
+    variables = root.findall(".//ua:UAVariable", ns)
+    return len(variables)
+
+
+def load_namespace_cache(nodeset_path: str) -> dict | None:
+    """
+    Load namespace mapping from .nsmeta sidecar file if it exists.
+    Returns dict with 'namespaces' list and 'generated' timestamp, or None if not found.
+    """
+    import json
+
+    cache_path = f"{nodeset_path}.nsmeta"
+    try:
+        with open(cache_path) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+
+
+def save_namespace_cache(nodeset_path: str, namespaces: list[str]):
+    """
+    Save namespace mapping to .nsmeta sidecar file for faster loading.
+    """
+    import json
+    from datetime import datetime
+
+    cache_path = f"{nodeset_path}.nsmeta"
+    cache_data = {"namespaces": namespaces, "generated": datetime.now().isoformat()}
+    with open(cache_path, "w") as f:
+        json.dump(cache_data, f, indent=2)
+
+
 def build_namespace_map(server, nodeset_path: str) -> dict[int, int]:
     """
     Build a mapping from namespace indices in the nodeset XML to actual server indices.
     Returns dict {xml_ns_idx: server_ns_idx}
-    """
-    # Parse the nodeset XML to get namespace URIs and their declared indices
-    tree = ET.parse(nodeset_path)
-    root = tree.getroot()
 
+    Uses .nsmeta cache file if available to skip XML parsing.
+    """
+    # Try to load from cache first
+    cache = load_namespace_cache(nodeset_path)
     xml_namespaces = {}
-    ns_uris_elem = root.find(".//ua:NamespaceUris", NS)
-    if ns_uris_elem is not None:
-        for idx, uri_elem in enumerate(ns_uris_elem.findall("ua:Uri", NS), start=1):
-            uri = uri_elem.text
+
+    if cache and "namespaces" in cache:
+        # Use cached namespace data
+        for idx, uri in enumerate(cache["namespaces"], start=1):
             if uri:
                 xml_namespaces[idx] = uri
+    else:
+        # Parse the nodeset XML to get namespace URIs and their declared indices
+        tree = ET.parse(nodeset_path)
+        root = tree.getroot()
+
+        ns_uris_elem = root.find(".//ua:NamespaceUris", NS)
+        if ns_uris_elem is not None:
+            for idx, uri_elem in enumerate(ns_uris_elem.findall("ua:Uri", NS), start=1):
+                uri = uri_elem.text
+                if uri:
+                    xml_namespaces[idx] = uri
+
+        # Save cache for next time
+        namespace_list = (
+            [xml_namespaces.get(i, "") for i in range(1, max(xml_namespaces.keys()) + 1)]
+            if xml_namespaces
+            else []
+        )
+        if namespace_list:
+            save_namespace_cache(nodeset_path, namespace_list)
 
     # Get actual namespace array from server
     server_namespaces = server.get_namespace_array()
@@ -431,7 +529,11 @@ def start_injection_api(store: OverrideStore, port: int, quiet: bool = False):
 
 
 def load_and_prepare_data(
-    data_path: str, ts_col: str, offset: float = 0.0, max_rows: int | None = None
+    data_path: str,
+    ts_col: str,
+    offset: float = 0.0,
+    max_rows: int | None = None,
+    sort_and_save: bool = False,
 ):
     """
     Load data from CSV or Parquet file and prepare for replay.
@@ -445,9 +547,12 @@ def load_and_prepare_data(
 
     Process order:
     1. Load data file
-    2. Sort by timestamp
+    2. Parse timestamps (if sort_and_save=True, also sort and save)
     3. Apply offset (skip first N seconds from start)
     4. Apply max_rows limit (take first N rows after offset)
+
+    By default, assumes data is already sorted by timestamp for performance.
+    Use sort_and_save=True to explicitly sort and save sorted file.
 
     Returns dataframe with normalized column names: TAGNAME, TAGVALUE, DATATYPE, and timestamp column.
     """
@@ -482,9 +587,31 @@ def load_and_prepare_data(
             f"Data file missing timestamp column '{ts_col}'. Available: {list(df.columns)}"
         )
 
-    # Parse and sort by timestamp - CRITICAL for proper replay order
+    # Parse timestamp column
     df[ts_col] = pd.to_datetime(df[ts_col], errors="coerce", utc=True)
-    df = df.dropna(subset=[ts_col]).sort_values(ts_col)
+    df = df.dropna(subset=[ts_col])
+
+    # Sort and save if requested (preprocessing step for faster subsequent runs)
+    if sort_and_save:
+        print(f"[Data] Sorting {len(df)} rows by {ts_col}...")
+        df = df.sort_values(ts_col)
+
+        # Generate sorted filename
+        import os
+
+        base, ext = os.path.splitext(data_path)
+        sorted_path = f"{base}_sorted{ext}"
+
+        # Write sorted file
+        print(f"[Data] Writing sorted data to {sorted_path}...")
+        if sorted_path.lower().endswith(".parquet"):
+            df.to_parquet(sorted_path, index=False)
+        else:
+            df.to_csv(sorted_path, index=False)
+
+        print(f"[Data] Sorted file saved: {sorted_path}")
+        print(f"[Data] Use --data {sorted_path} for faster startup next time")
+    # Otherwise assume data is already sorted (skip expensive sort operation)
 
     # Apply offset BEFORE max_rows
     if offset > 0:
@@ -614,14 +741,9 @@ def main():
 
     # New "skip, don't fix" behaviors:
     ap.add_argument(
-        "--drop-bad-nodeset-nodeids",
+        "--allow-non-canonical",
         action="store_true",
-        help="Drop nodes from the imported NodeSet that have non-canonical NodeIds (prevents import crash).",
-    )
-    ap.add_argument(
-        "--skip-bad-csv",
-        action="store_true",
-        help="Skip/log data rows with non-canonical TAGNAMEs, or writes that fail (BadNodeIdUnknown, etc.).",
+        help="Allow non-canonical NodeIds without auto-conversion (may violate OPC UA spec). By default, non-canonical TAGNAMEs like 'PET001' are auto-converted to 'ns=2;s=PET001'.",
     )
 
     # Namespace mapping control:
@@ -639,6 +761,13 @@ def main():
         help="HTTP port for the tag-injection REST API (default: 8080, 0 to disable)",
     )
 
+    # Performance optimization:
+    ap.add_argument(
+        "--sort-by-ts",
+        action="store_true",
+        help="Sort data by timestamp and save sorted file (creates <filename>_sorted.csv or .parquet). Use once to preprocess data for faster subsequent runs. Assumes data is already sorted by default.",
+    )
+
     args = ap.parse_args()
 
     # Support legacy --csv argument
@@ -653,10 +782,26 @@ def main():
     if args.speed <= 0:
         raise ValueError("--speed must be > 0")
 
+    # Start timing instrumentation
+    import time
+
+    _timing_start = time.time()
+    _timing_data_load_start = time.time()
+
     # Load and prepare data (load -> sort -> offset -> max_rows)
-    df = load_and_prepare_data(data_file, args.ts_col, offset=args.offset, max_rows=args.max_rows)
+    df = load_and_prepare_data(
+        data_file,
+        args.ts_col,
+        offset=args.offset,
+        max_rows=args.max_rows,
+        sort_and_save=args.sort_by_ts,
+    )
     if df.empty:
         raise ValueError("No valid rows found after parsing timestamps.")
+
+    _timing_data_load = time.time() - _timing_data_load_start
+
+    _timing_data_load = time.time() - _timing_data_load_start
 
     if not args.quiet:
         print(f"[Data] Loaded {len(df)} rows from {data_file}")
@@ -665,10 +810,14 @@ def main():
         print(f"[Data] Time range: {df[args.ts_col].min()} to {df[args.ts_col].max()}")
         duration = (df[args.ts_col].max() - df[args.ts_col].min()).total_seconds()
         print(f"[Data] Duration: {duration:.1f}s ({duration / 60:.1f} min)")
-        print(f"[Data] Unique tags: {df['TAGNAME'].nunique()}")
+        # Skip expensive .nunique() - will get count from nodeset later
+
+    unique_tag_count = None  # Will be computed from nodeset or tag_defs
 
     # Auto-generate NodeSet if requested
     if args.auto_nodeset:
+        _timing_nodeset_gen_start = time.time()
+        _timing_nodeset_gen_start = time.time()
         # Import here to avoid circular dependency
         from .to_nodeset import generate_nodeset_from_dataframe
 
@@ -686,11 +835,13 @@ def main():
         data_dir = os.path.dirname(os.path.abspath(data_file))
         auto_nodeset_path = os.path.join(data_dir, f"{root_name}_auto_nodeset.xml")
 
-        if not args.quiet:
-            print(f"[Auto-NodeSet] Generating from {len(df['TAGNAME'].unique())} unique tags...")
-
         # Extract unique tag definitions from data
         tag_defs = df[["TAGNAME", "DATATYPE", "TAGVALUE"]].drop_duplicates(subset=["TAGNAME"])
+        unique_tag_count = len(tag_defs)
+
+        if not args.quiet:
+            mode_info = " (compact mode for faster import)" if unique_tag_count > 5000 else ""
+            print(f"[Auto-NodeSet] Generating from {unique_tag_count} unique tags{mode_info}...")
 
         # Generate NodeSet XML
         xml_content = generate_nodeset_from_dataframe(
@@ -706,6 +857,8 @@ def main():
         with open(auto_nodeset_path, "w", encoding="utf-8") as f:
             f.write(xml_content)
 
+        _timing_nodeset_gen = time.time() - _timing_nodeset_gen_start
+
         if not args.quiet:
             print(f"[Auto-NodeSet] Generated: {auto_nodeset_path}")
             print(
@@ -713,6 +866,23 @@ def main():
             )
 
         args.nodeset = auto_nodeset_path
+    else:
+        _timing_nodeset_gen = 0.0
+
+    # Get unique tag count from existing nodeset if not already computed
+    if unique_tag_count is None and not args.quiet:
+        _timing_count_start = time.time()
+        unique_tag_count = count_variables_in_nodeset(args.nodeset)
+        _timing_count = time.time() - _timing_count_start
+    else:
+        _timing_count = 0.0
+
+    if not args.quiet and unique_tag_count is not None:
+        print(f"[Data] Unique tags: {unique_tag_count}")
+
+    _timing_server_init_start = time.time()
+
+    _timing_server_init_start = time.time()
 
     server = Server()
     server.set_endpoint(args.endpoint)
@@ -721,21 +891,21 @@ def main():
     nodeset_path = args.nodeset
     tmp_nodeset = None
 
-    if args.drop_bad_nodeset_nodeids:
-        tmp_nodeset, dropped_nodes, dropped_refs = drop_bad_nodeset_nodes(args.nodeset)
-        nodeset_path = tmp_nodeset
-        if not args.quiet:
-            print(
-                f"[NodeSet] Dropped {dropped_nodes} nodes with non-canonical NodeIds; dropped {dropped_refs} bad references"
-            )
-
     # Import NodeSet
+    if not args.quiet:
+        print(f"[NodeSet] Importing {nodeset_path}... (may take 10-30s for large nodesets)")
+    _timing_import_start = time.time()
     server.import_xml(nodeset_path)
+    _timing_import = time.time() - _timing_import_start
 
+    _timing_start_server_start = time.time()
     server.start()
+    _timing_start_server = time.time() - _timing_start_server_start
 
     # Build namespace mapping and check for mismatches
+    _timing_ns_map_start = time.time()
     ns_map = build_namespace_map(server, nodeset_path)
+    _timing_ns_map = time.time() - _timing_ns_map_start
     ns_array = server.get_namespace_array()
 
     if not args.quiet:
@@ -796,6 +966,20 @@ def main():
                 f"[Namespace validation] CSV indices {sorted(csv_ns_indices)} align with server [OK]"
             )
 
+    # Print timing summary
+    _timing_total = time.time() - _timing_start
+    if not args.quiet:
+        print("\n[Timing] Startup breakdown:")
+        print(f"  Data load: {_timing_data_load:.2f}s")
+        if _timing_nodeset_gen > 0:
+            print(f"  NodeSet generation: {_timing_nodeset_gen:.2f}s")
+        if _timing_count > 0:
+            print(f"  Tag count: {_timing_count:.2f}s")
+        print(f"  NodeSet import: {_timing_import:.2f}s")
+        print(f"  Server start: {_timing_start_server:.2f}s")
+        print(f"  Namespace mapping: {_timing_ns_map:.2f}s")
+        print(f"  Total startup: {_timing_total:.2f}s\n")
+
     # Pre-compute: if ns_map is identity (all indices unchanged), skip regex on every row
     _ns_identity = all(k == v for k, v in ns_map.items())
 
@@ -836,11 +1020,15 @@ def main():
                     time.sleep(delta / args.speed)
                 prev = ts
 
-                if args.skip_bad_csv and not is_canonical_nodeid(tagname):
-                    skipped += 1
-                    if not args.quiet:
-                        print(f"[SKIP CSV non-canonical TAGNAME] {tagname} @ {ts.isoformat()}")
-                    continue
+                # Auto-convert non-canonical NodeIds to canonical form (unless disabled)
+                if not args.allow_non_canonical:
+                    try:
+                        tagname = canonicalize_nodeid(tagname)
+                    except ValueError as e:
+                        skipped += 1
+                        if not args.quiet:
+                            print(f"[SKIP] Invalid TAGNAME: {e} @ {ts.isoformat()}")
+                        continue
 
                 # Remap namespace index from CSV to actual server index
                 remapped_tagname = tagname if _ns_identity else remap_nodeid(tagname, ns_map)
@@ -867,11 +1055,9 @@ def main():
 
                 except Exception as ex:
                     skipped += 1
-                    if args.skip_bad_csv:
-                        if not args.quiet:
-                            print(f"[SKIP write failure] {tagname} @ {ts.isoformat()} ({ex})")
-                        continue
-                    raise
+                    if not args.quiet:
+                        print(f"[SKIP write failure] {tagname} @ {ts.isoformat()} ({ex})")
+                    continue
 
                 if not args.quiet and (i % 2000 == 0):
                     print(f"{ts.isoformat()} | processed={i} written={written} skipped={skipped}")

@@ -6,6 +6,8 @@ from xml.dom import minidom
 
 import pandas as pd
 
+from opc_replay.server import canonicalize_nodeid, is_canonical_nodeid
+
 # ---- UA namespaces ----
 NS_UA = "http://opcfoundation.org/UA/2011/03/UANodeSet.xsd"
 NS_UAX = "http://opcfoundation.org/UA/2008/02/Types.xsd"
@@ -55,14 +57,21 @@ ORGANIZES = "Organizes"
 HAS_TYPE_DEFINITION = "HasTypeDefinition"
 
 
-def is_canonical_nodeid(s: str) -> bool:
-    s = (s or "").strip()
-    return bool(re.match(r"^ns=\d+;[isgb]=.+$", s))
+def pretty_xml(elem, compact: bool = False) -> str:
+    """
+    Convert ElementTree to XML string.
 
-
-def pretty_xml(elem) -> str:
-    raw = ET.tostring(elem, encoding="utf-8")
-    return minidom.parseString(raw).toprettyxml(indent="  ")
+    Args:
+        elem: Element tree root
+        compact: If True, skip pretty-printing (faster, smaller files for large nodesets)
+    """
+    if compact:
+        # Skip pretty-printing for large nodesets (faster, smaller files)
+        return ET.tostring(elem, encoding="utf-8").decode("utf-8")
+    else:
+        # Pretty-print for readability (small nodesets)
+        raw = ET.tostring(elem, encoding="utf-8")
+        return minidom.parseString(raw).toprettyxml(indent="  ")
 
 
 def add_ref(refs, ref_type: str, target: str, is_forward=True):
@@ -103,6 +112,7 @@ def generate_nodeset_from_dataframe(
     namespace_uri: str = None,
     split_regex: str = r"\.",
     no_folders: bool = False,
+    compact: bool = False,
 ) -> str:
     """
     Generate OPC UA NodeSet2 XML from a DataFrame with TAGNAME, DATATYPE, and optionally TAGVALUE.
@@ -114,6 +124,8 @@ def generate_nodeset_from_dataframe(
         namespace_uri: Namespace URI (default: urn:<root_name>:tags)
         split_regex: Regex to split tag names into folder hierarchy (default: "\\.")
         no_folders: If True, place all variables under root without folder hierarchy
+        compact: If True, skip pretty-printing for faster generation and smaller files.
+                 Default: False (pretty-printed for readability)
 
     Returns:
         XML string of the NodeSet
@@ -138,13 +150,26 @@ def generate_nodeset_from_dataframe(
     # De-duplicate
     df = df.drop_duplicates(subset=["TAGNAME"])
 
-    # Filter non-canonical NodeIds
+    # Auto-convert non-canonical NodeIds to canonical form
     df["TAGNAME"] = df["TAGNAME"].astype(str).str.strip()
-    bad = df.loc[~df["TAGNAME"].map(is_canonical_nodeid), "TAGNAME"].unique().tolist()
-    df = df[df["TAGNAME"].map(is_canonical_nodeid)].copy()
 
-    if bad:
-        print(f"Skipping {len(bad)} non-canonical TAGNAMEs (examples: {bad[:10]})")
+    # Track conversions for user feedback
+    non_canonical_mask = ~df["TAGNAME"].map(is_canonical_nodeid)
+    non_canonical = df.loc[non_canonical_mask, "TAGNAME"].unique().tolist()
+
+    # Apply canonicalization
+    df["TAGNAME"] = df["TAGNAME"].map(lambda t: canonicalize_nodeid(t, default_ns=namespace_index))
+
+    if non_canonical:
+        examples = non_canonical[:4]
+        converted_examples = [canonicalize_nodeid(t, default_ns=namespace_index) for t in examples]
+        pairs = ", ".join(
+            [
+                f"'{orig}' -> '{conv}'"
+                for orig, conv in zip(examples, converted_examples, strict=False)
+            ]
+        )
+        print(f"[Auto-convert] Canonicalized {len(non_canonical)} TAGNAMEs (examples: {pairs})")
 
     if df.empty:
         raise ValueError("No valid TAGNAMEs found in DataFrame")
@@ -181,6 +206,7 @@ def generate_nodeset_from_dataframe(
         {
             "NodeId": root_obj_nodeid,
             "BrowseName": f"{namespace_index}:{root_name}",
+            "EventNotifier": "0",
         },
     )
     ET.SubElement(root_obj, f"{{{NS_UA}}}DisplayName").text = root_name
@@ -207,6 +233,7 @@ def generate_nodeset_from_dataframe(
                 {
                     "NodeId": folder_nodeid,
                     "BrowseName": f"{namespace_index}:{part}",
+                    "EventNotifier": "0",
                 },
             )
             ET.SubElement(obj, f"{{{NS_UA}}}DisplayName").text = part
@@ -269,7 +296,7 @@ def generate_nodeset_from_dataframe(
         v = ET.SubElement(val, f"{{{NS_UAX}}}{tag}")
         v.text = cast_text(value, dtype)
 
-    return pretty_xml(root)
+    return pretty_xml(root, compact=compact)
 
 
 def main():
@@ -315,6 +342,11 @@ Examples:
         "--no-folders",
         action="store_true",
         help="Do not create folder hierarchy; put all variables under root",
+    )
+    ap.add_argument(
+        "--no-pretty",
+        action="store_true",
+        help="Skip pretty-printing for faster generation and smaller files",
     )
     args = ap.parse_args()
 
@@ -364,6 +396,7 @@ Examples:
         namespace_uri=args.namespace_uri,
         split_regex=args.split_regex,
         no_folders=args.no_folders,
+        compact=args.no_pretty,
     )
 
     # Write to file
