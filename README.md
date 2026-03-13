@@ -1,6 +1,8 @@
 # OPC Replay Server
 
 [![CI](https://github.com/mieslep/opc-replay/actions/workflows/ci.yml/badge.svg)](https://github.com/mieslep/opc-replay/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/opc-replay.svg)](https://pypi.org/project/opc-replay/)
+[![Python Version](https://img.shields.io/pypi/pyversions/opc-replay.svg)](https://pypi.org/project/opc-replay/)
 
 A Python-based OPC UA replay server for replaying historical timestamped tag data from CSV or Parquet files. Perfect for testing, simulation, and development scenarios where you need to reproduce specific OPC UA data sequences.
 
@@ -13,21 +15,31 @@ A Python-based OPC UA replay server for replaying historical timestamped tag dat
 
 ## Installation
 
-### Install from Source
+### From PyPI (Recommended)
 
 ```bash
-git clone <repository-url>
+pip install opc-replay
+```
+
+Requires Python 3.13 or later.
+
+### From Source (For Development)
+
+```bash
+git clone https://github.com/mieslep/opc-replay.git
 cd opc-replay
 pip install -e .
 ```
 
-### With uv (recommended for development)
+### With uv (Recommended for Development)
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/mieslep/opc-replay.git
 cd opc-replay
 uv sync
 ```
+
+For development setup and contribution guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Quick Start
 
