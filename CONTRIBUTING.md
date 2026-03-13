@@ -41,17 +41,17 @@
 We have comprehensive unit and integration tests. Run all tests:
 
 ```bash
-pytest tests/
+uv run pytest tests/
 ```
 
 Run specific test suites:
 
 ```bash
 # Unit tests only (fast, ~0.6 seconds)
-pytest tests/unit -v
+uv run pytest tests/unit -v
 
 # Integration tests only (slower, starts OPC UA server)
-pytest tests/integration -v
+uv run pytest tests/integration -v
 ```
 
 For detailed testing information, see [tests/README.md](tests/README.md).
@@ -63,25 +63,25 @@ We use [ruff](https://github.com/astral-sh/ruff) for linting and formatting.
 **Check code quality:**
 
 ```bash
-ruff check .
+uv run ruff check .
 ```
 
 **Auto-fix issues:**
 
 ```bash
-ruff check . --fix
+uv run ruff check . --fix
 ```
 
 **Check formatting:**
 
 ```bash
-ruff format --check .
+uv run ruff format --check .
 ```
 
 **Auto-format code:**
 
 ```bash
-ruff format .
+uv run ruff format .
 ```
 
 ### Running CI Checks Locally

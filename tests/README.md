@@ -27,30 +27,30 @@ tests/
 
 ```bash
 # Run all tests (unit + integration if server available)
-pytest tests/
+uv run pytest tests/
 
 # Run only unit tests (fast, no server required)
-pytest tests/unit/
+uv run pytest tests/unit/
 
 # Run only integration tests (requires OPC UA server)
-pytest tests/integration/
+uv run pytest tests/integration/
 
 # Run with verbose output
-pytest tests/ -v
+uv run pytest tests/ -v
 
 # Run specific test file
-pytest tests/unit/test_override_store.py
+uv run pytest tests/unit/test_override_store.py
 
 # Run tests with specific marker
-pytest -m unit
-pytest -m integration
-pytest -m threading
+uv run pytest -m unit
+uv run pytest -m integration
+uv run pytest -m threading
 
 # Run with coverage report
-pytest tests/unit/ --cov=opc_replay --cov-report=html
+uv run pytest tests/unit/ --cov=opc_replay --cov-report=html
 
 # Skip integration tests even if server is available
-pytest tests/ -m "not integration"
+uv run pytest tests/ -m "not integration"
 ```
 
 ## Test Markers
@@ -90,7 +90,7 @@ You can still run the tests with your own server if preferred:
 opc-replay --data examples/simple-data.csv --ts-col TS --auto-nodeset --loop --speed 10
 
 # Run tests in another terminal (will use existing server)
-pytest tests/integration/ -v -s
+uv run pytest tests/integration/ -v -s
 ```
 
 The fixture detects the running server and uses it instead of starting a new one.
@@ -215,4 +215,4 @@ Integration tests are in [tests/integration/](integration/) and test the full sy
 - `test_client.py` - OPC UA client connection and tag monitoring  
 - `test_load_logic.py` - Data loading validation
 
-These are part of the pytest suite and run automatically with `pytest tests/`.
+These are part of the pytest suite and run automatically with `uv run pytest tests/`.
