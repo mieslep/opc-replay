@@ -295,10 +295,19 @@ uv run pytest tests/
 ### Making Changes
 1. Create feature branch
 2. Make changes with type hints and docstrings
-3. Write/update tests (aim for unit tests when possible)
-4. Run `./scripts/run_ci_locally.sh`
-5. Commit and push
-6. Open Pull Request
+3. **Run linting after code changes**: `uv run ruff check .` (and fix any issues)
+4. Write/update tests (aim for unit tests when possible)
+5. **Verify changes**: Run `uv run pytest` on affected test files
+6. Run `./scripts/run_ci_locally.sh` for final validation
+7. Commit and push
+8. Open Pull Request
+
+### Copilot Workflow
+When making code changes as Copilot:
+1. **After editing files**: Always run `uv run ruff check <file>` to verify code quality
+2. **After creating/editing tests**: Run `uv run pytest <test_file> -v` to verify they pass
+3. **Before completing the task**: Ensure all linting passes and tests work
+4. Use `uv run ruff format .` if formatting issues are detected
 
 ## Dependencies & Imports
 
@@ -425,9 +434,10 @@ TS,Tag1,Tag2,Tag3
 4. **Consider thread safety**: Use locks for shared state
 5. **Handle errors gracefully**: Don't let OPC UA errors crash the server
 6. **Update documentation**: Mention if README or docstrings need updates
-7. **Check ruff compliance**: Ensure suggestions follow ruff rules (use `uv run ruff check .`)
-8. **Use Python 3.13 features**: Leverage modern Python syntax when beneficial
-9. **Multi-platform compatibility**: Avoid Unicode characters in print statements - use ASCII alternatives like `[OK]`, `[ERROR]`, `[WARNING]` instead of ✓, ✗, ⚠️
+7. **Run linting after changes**: Always run `uv run ruff check <file>` after editing code and fix any issues before proceeding
+8. **Verify with tests**: Run `uv run pytest <test_file> -v` after creating or modifying tests
+9. **Use Python 3.13 features**: Leverage modern Python syntax when beneficial
+10. **Multi-platform compatibility**: Avoid Unicode characters in print statements - use ASCII alternatives like `[OK]`, `[ERROR]`, `[WARNING]` instead of ✓, ✗, ⚠️
 
 ## Quick Reference
 
