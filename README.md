@@ -103,6 +103,7 @@ opc-replay \
 - `--loop` - Loop playback forever
 - `--offset N` - Skip first N seconds
 - `--api-port PORT` - HTTP API port for tag injection (default: 8080, 0 to disable)
+- `--allow-non-canonical` - Allow non-canonical NodeIds without auto-conversion (advanced)
 
 ### `opc-inject` - Tag Injection
 
@@ -158,6 +159,30 @@ ns=2;s=Temperature,20.5,Float,2026-01-01T10:00:00Z
 ns=2;s=Pressure,101.3,Float,2026-01-01T10:00:00Z
 ns=2;s=Flow,15.2,Float,2026-01-01T10:00:00Z
 ```
+
+### Auto-Conversion of NodeIds
+
+By default, `opc-replay` automatically converts non-canonical TAGNAMEs to canonical OPC UA format:
+
+```csv
+# Input data with mixed formats:
+TAGNAME,TAGVALUE,DATATYPE,TS
+Temperature,20.5,Float,2026-01-01T10:00:00Z           # Auto-converted to: ns=2;s=Temperature
+ns=2;s=Pressure,101.3,Float,2026-01-01T10:00:00Z      # Already canonical, used as-is
+PET001.Flow,15.2,Float,2026-01-01T10:00:00Z           # Auto-converted to: ns=2;s=PET001.Flow
+```
+
+**Canonical Format:** `ns=<namespace>;[isgb]=<identifier>`
+- `ns=` - Namespace index (e.g., `ns=2`)
+- Identifier type: `s=` (string), `i=` (integer), `g=` (GUID), `b=` (bytestring)
+- Example: `ns=2;s=Tank.Level.Current`
+
+**Benefits:**
+- Works with legacy data that uses simple tag names
+- No need to pre-process your CSV files
+- Proper OPC UA compliance by default
+
+**Advanced:** Use `--allow-non-canonical` to disable auto-conversion if your OPC UA client supports non-standard NodeIds.
 
 ## Use Cases
 

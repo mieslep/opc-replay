@@ -6,6 +6,8 @@ from xml.dom import minidom
 
 import pandas as pd
 
+from opc_replay.server import canonicalize_nodeid, is_canonical_nodeid
+
 # ---- UA namespaces ----
 NS_UA = "http://opcfoundation.org/UA/2011/03/UANodeSet.xsd"
 NS_UAX = "http://opcfoundation.org/UA/2008/02/Types.xsd"
@@ -53,11 +55,6 @@ FOLDER_TYPE = "ns=0;i=61"
 BASE_DATA_VARIABLE_TYPE = "ns=0;i=63"
 ORGANIZES = "Organizes"
 HAS_TYPE_DEFINITION = "HasTypeDefinition"
-
-
-def is_canonical_nodeid(s: str) -> bool:
-    s = (s or "").strip()
-    return bool(re.match(r"^ns=\d+;[isgb]=.+$", s))
 
 
 def pretty_xml(elem) -> str:
@@ -138,13 +135,21 @@ def generate_nodeset_from_dataframe(
     # De-duplicate
     df = df.drop_duplicates(subset=["TAGNAME"])
 
-    # Filter non-canonical NodeIds
+    # Auto-convert non-canonical NodeIds to canonical form
     df["TAGNAME"] = df["TAGNAME"].astype(str).str.strip()
-    bad = df.loc[~df["TAGNAME"].map(is_canonical_nodeid), "TAGNAME"].unique().tolist()
-    df = df[df["TAGNAME"].map(is_canonical_nodeid)].copy()
 
-    if bad:
-        print(f"Skipping {len(bad)} non-canonical TAGNAMEs (examples: {bad[:10]})")
+    # Track conversions for user feedback
+    non_canonical_mask = ~df["TAGNAME"].map(is_canonical_nodeid)
+    non_canonical = df.loc[non_canonical_mask, "TAGNAME"].unique().tolist()
+
+    # Apply canonicalization
+    df["TAGNAME"] = df["TAGNAME"].map(lambda t: canonicalize_nodeid(t, default_ns=namespace_index))
+
+    if non_canonical:
+        examples = non_canonical[:4]
+        converted_examples = [canonicalize_nodeid(t, default_ns=namespace_index) for t in examples]
+        pairs = ", ".join([f"'{orig}' -> '{conv}'" for orig, conv in zip(examples, converted_examples, strict=False)])
+        print(f"[Auto-convert] Canonicalized {len(non_canonical)} TAGNAMEs (examples: {pairs})")
 
     if df.empty:
         raise ValueError("No valid TAGNAMEs found in DataFrame")

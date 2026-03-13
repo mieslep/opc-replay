@@ -9,7 +9,7 @@ Tests cover:
 
 import pytest
 
-from opc_replay.server import is_canonical_nodeid, remap_nodeid
+from opc_replay.server import canonicalize_nodeid, is_canonical_nodeid, remap_nodeid
 
 
 @pytest.mark.unit
@@ -92,6 +92,79 @@ class TestIsCanonicalNodeId:
         assert is_canonical_nodeid("ns=2;s=Tag/With/Slashes") is True
         assert is_canonical_nodeid("ns=2;s=Tag With Spaces") is True
         assert is_canonical_nodeid("ns=2;s=Tag:With:Colons") is True
+
+
+@pytest.mark.unit
+class TestCanonicalizeNodeId:
+    """Test canonicalize_nodeid function for auto-conversion."""
+
+    def test_already_canonical_unchanged(self):
+        """Test that already canonical NodeIds are returned unchanged."""
+        assert canonicalize_nodeid("ns=2;s=Temperature") == "ns=2;s=Temperature"
+        assert canonicalize_nodeid("ns=0;i=85") == "ns=0;i=85"
+        assert canonicalize_nodeid("ns=1;g=12345678-1234-1234-1234-123456789012") == "ns=1;g=12345678-1234-1234-1234-123456789012"
+        assert canonicalize_nodeid("ns=2;b=ABC123") == "ns=2;b=ABC123"
+
+    def test_simple_name_converted(self):
+        """Test simple tag names are wrapped with default namespace."""
+        assert canonicalize_nodeid("Temperature") == "ns=2;s=Temperature"
+        assert canonicalize_nodeid("PET001CalcAlarm") == "ns=2;s=PET001CalcAlarm"
+        assert canonicalize_nodeid("Tank1Level") == "ns=2;s=Tank1Level"
+
+    def test_dotted_name_converted(self):
+        """Test dotted names are wrapped preserving the dots."""
+        assert canonicalize_nodeid("Tank.Level") == "ns=2;s=Tank.Level"
+        assert canonicalize_nodeid("PET001.Temperature.Current") == "ns=2;s=PET001.Temperature.Current"
+
+    def test_special_characters_preserved(self):
+        """Test special characters are preserved in conversion."""
+        assert canonicalize_nodeid("Tag_With_Underscores") == "ns=2;s=Tag_With_Underscores"
+        assert canonicalize_nodeid("Tag-With-Dashes") == "ns=2;s=Tag-With-Dashes"
+        assert canonicalize_nodeid("Tag With Spaces") == "ns=2;s=Tag With Spaces"
+        assert canonicalize_nodeid("Tag:With:Colons") == "ns=2;s=Tag:With:Colons"
+        assert canonicalize_nodeid("Tag/With/Slashes") == "ns=2;s=Tag/With/Slashes"
+
+    def test_custom_namespace(self):
+        """Test conversion with custom namespace index."""
+        assert canonicalize_nodeid("Temperature", default_ns=3) == "ns=3;s=Temperature"
+        assert canonicalize_nodeid("Tank.Level", default_ns=10) == "ns=10;s=Tank.Level"
+
+    def test_whitespace_stripped(self):
+        """Test leading/trailing whitespace is stripped."""
+        assert canonicalize_nodeid("  Temperature  ") == "ns=2;s=Temperature"
+        assert canonicalize_nodeid("\tPET001\n") == "ns=2;s=PET001"
+        # Canonical with whitespace
+        assert canonicalize_nodeid("  ns=2;s=Temperature  ") == "ns=2;s=Temperature"
+
+    def test_empty_raises_error(self):
+        """Test empty or whitespace-only input raises ValueError."""
+        with pytest.raises(ValueError, match="NodeId cannot be empty"):
+            canonicalize_nodeid("")
+        with pytest.raises(ValueError, match="NodeId cannot be empty"):
+            canonicalize_nodeid("   ")
+        with pytest.raises(ValueError, match="NodeId cannot be empty"):
+            canonicalize_nodeid(None)
+
+    def test_partial_canonical_converted(self):
+        """Test partially canonical formats are wrapped (missing ns or type marker)."""
+        # Missing namespace
+        assert canonicalize_nodeid("s=Temperature") == "ns=2;s=s=Temperature"
+        assert canonicalize_nodeid("i=85") == "ns=2;s=i=85"
+        # Missing type marker
+        assert canonicalize_nodeid("ns=2;Temperature") == "ns=2;s=ns=2;Temperature"
+        # Wrong separator
+        assert canonicalize_nodeid("ns:2;s:Temperature") == "ns=2;s=ns:2;s:Temperature"
+
+    def test_numeric_string_converted(self):
+        """Test numeric strings that aren't canonical are wrapped."""
+        # Not canonical because missing ns= and i=
+        assert canonicalize_nodeid("12345") == "ns=2;s=12345"
+        assert canonicalize_nodeid("85") == "ns=2;s=85"
+
+    def test_unicode_characters(self):
+        """Test Unicode characters in tag names."""
+        assert canonicalize_nodeid("Température") == "ns=2;s=Température"
+        assert canonicalize_nodeid("Tank①Level") == "ns=2;s=Tank①Level"
 
 
 @pytest.mark.unit

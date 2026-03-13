@@ -8,10 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Auto-Conversion of Non-Canonical NodeIds** - Automatically converts simple tag names to canonical OPC UA format
+  - Example: `PET001CalcAlarm` -> `ns=2;s=PET001CalcAlarm`
+  - Works with both CSV replay and auto-generated NodeSets
+  - Makes the tool more user-friendly for legacy data
+- **`--allow-non-canonical` flag** - Optional flag to disable auto-conversion for edge cases
 
 ### Changed
+- **BREAKING:** Removed `--skip-bad-csv` flag - write failures now always log and continue instead of crashing
+- **BREAKING:** Removed `--drop-bad-nodeset-nodeids` flag - no longer needed since auto-conversion handles NodeSet generation
+- Auto-generated NodeSets now include all tags with auto-converted NodeIds instead of filtering them out
+- Error messages improved for clarity (e.g., "[SKIP write failure]" instead of "[SKIP CSV non-canonical TAGNAME]")
 
 ### Fixed
+- Non-canonical TAGNAMEs (e.g., `PET001CalcAlarm`) are now playable instead of being silently filtered
 
 ## [0.9.0] - 2026-03-13
 

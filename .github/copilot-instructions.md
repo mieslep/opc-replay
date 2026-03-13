@@ -164,27 +164,70 @@ uv run pytest tests/unit/test_data_loading.py -v
 
 ### Writing New Tests
 
+**CRITICAL: Tests are mandatory for all code changes**
+
+#### When to Write Unit Tests (`tests/unit/`)
+- **Always** for new functions, classes, or methods
+- When modifying existing logic
+- For data processing, validation, type conversion
+- For utility functions (NodeId parsing, timestamp handling, etc.)
+- Tests should be fast (<0.1s each) and use mocks for external dependencies
+
+#### When to Write Integration Tests (`tests/integration/`)
+- New features involving OPC UA server startup
+- HTTP API endpoints (injection/override functionality)
+- End-to-end data replay scenarios
+- File I/O operations (CSV/Parquet loading, NodeSet generation)
+- Tests may be slower (1-5s each) and use real server instances
+
+#### Test Naming and Structure
 - Use descriptive test names: `test_<function>_<scenario>_<expected_result>`
 - Use `pytest.fixture` for reusable setup
 - Mock external dependencies (OPC UA server, file I/O) in unit tests
-- Use `pytest.mark` decorators for test categorization
+- Use `pytest.mark.unit` or `pytest.mark.integration` decorators
 - Follow AAA pattern: Arrange, Act, Assert
 
-Example:
+#### Examples
+
+**Unit Test Example:**
 ```python
 @pytest.mark.unit
-def test_load_csv_data_with_valid_file_returns_dataframe(tmp_path):
+def test_canonicalize_nodeid_with_simple_name_adds_namespace():
     # Arrange
-    csv_file = tmp_path / "test.csv"
-    csv_file.write_text("TS,Tag1\n2024-01-01 00:00:00,42.0\n")
+    tagname = "Temperature"
     
     # Act
-    df = load_data(str(csv_file), ts_col="TS")
+    result = canonicalize_nodeid(tagname, default_ns=2)
     
     # Assert
-    assert len(df) == 1
-    assert "Tag1" in df.columns
+    assert result == "ns=2;s=Temperature"
 ```
+
+**Integration Test Example:**
+```python
+@pytest.mark.integration
+def test_auto_conversion_with_real_server():
+    # Arrange
+    server = Server()
+    server.set_endpoint("opc.tcp://0.0.0.0:4841")
+    # ... setup server ...
+    
+    # Act
+    server.start()
+    node = server.get_node("ns=2;s=ConvertedTag")
+    
+    # Assert
+    assert node is not None
+    
+    # Cleanup
+    server.stop()
+```
+
+#### Test File Organization
+- Unit test file: `tests/unit/test_<module_name>.py`
+  - Example: `test_nodeid_functions.py` for functions in `server.py`
+- Integration test file: `tests/integration/test_<feature_name>.py`
+  - Example: `test_auto_conversion.py` for auto-conversion feature
 
 ## Common Patterns
 
@@ -295,9 +338,12 @@ uv run pytest tests/
 ### Making Changes
 1. Create feature branch
 2. Make changes with type hints and docstrings
-3. **Run linting after code changes**: `uv run ruff check .` (and fix any issues)
-4. Write/update tests (aim for unit tests when possible)
-5. **Verify changes**: Run `uv run pytest` on affected test files
+3. **Create tests IMMEDIATELY** (not optional):
+   - **Unit tests** for any new function, class, or logic (in `tests/unit/`)
+   - **Integration tests** for features involving OPC UA server, HTTP API, or file I/O (in `tests/integration/`)
+   - Update existing tests when modifying functionality
+4. **Run linting after code changes**: `uv run ruff check .` (and fix any issues)
+5. **Verify tests pass**: Run `uv run pytest <test_file> -v` on new/affected tests
 6. Run `./scripts/run_ci_locally.sh` for final validation
 7. Commit and push
 8. Open Pull Request
@@ -305,9 +351,13 @@ uv run pytest tests/
 ### Copilot Workflow
 When making code changes as Copilot:
 1. **After editing files**: Always run `uv run ruff check <file>` to verify code quality
-2. **After creating/editing tests**: Run `uv run pytest <test_file> -v` to verify they pass
-3. **Before completing the task**: Ensure all linting passes and tests work
+2. **IMMEDIATELY create tests**: 
+   - Write unit tests in `tests/unit/test_<module>.py` for new functions/classes
+   - Write integration tests in `tests/integration/test_<feature>.py` for end-to-end features
+   - Run `uv run pytest <test_file> -v` to verify tests pass
+3. **Before completing the task**: Ensure all linting passes and ALL tests work
 4. Use `uv run ruff format .` if formatting issues are detected
+5. **Feature is NOT complete without tests** - always create them as part of the implementation
 
 ## Dependencies & Imports
 
@@ -430,14 +480,19 @@ TS,Tag1,Tag2,Tag3
 
 1. **Respect existing patterns**: Follow established code structure
 2. **Include type hints**: All new functions should have type annotations
-3. **Add tests**: Suggest both unit and integration tests when appropriate
+3. **ALWAYS create tests** (MANDATORY):
+   - **Unit tests** (in `tests/unit/`) are REQUIRED for any new function, class, or logic change
+   - **Integration tests** (in `tests/integration/`) are REQUIRED for new features that involve OPC UA server, HTTP API, or file I/O
+   - When modifying existing code, update or add tests to maintain coverage
+   - Test file naming: `test_<module_name>.py` (e.g., `test_nodeid_functions.py` for functions in `server.py`)
+   - Run tests immediately after creating them: `uv run pytest <test_file> -v`
+   - Never consider a feature "complete" without accompanying tests
 4. **Consider thread safety**: Use locks for shared state
 5. **Handle errors gracefully**: Don't let OPC UA errors crash the server
 6. **Update documentation**: Mention if README or docstrings need updates
 7. **Run linting after changes**: Always run `uv run ruff check <file>` after editing code and fix any issues before proceeding
-8. **Verify with tests**: Run `uv run pytest <test_file> -v` after creating or modifying tests
-9. **Use Python 3.13 features**: Leverage modern Python syntax when beneficial
-10. **Multi-platform compatibility**: Avoid Unicode characters in print statements - use ASCII alternatives like `[OK]`, `[ERROR]`, `[WARNING]` instead of ✓, ✗, ⚠️
+8. **Use Python 3.13 features**: Leverage modern Python syntax when beneficial
+9. **Multi-platform compatibility**: Avoid Unicode characters in print statements - use ASCII alternatives like `[OK]`, `[ERROR]`, `[WARNING]` instead of ✓, ✗, ⚠️
 
 ## Quick Reference
 

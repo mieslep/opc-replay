@@ -66,6 +66,40 @@ def is_canonical_nodeid(s: str) -> bool:
     return bool(re.match(r"^ns=\d+;[isgb]=.+$", s))
 
 
+def canonicalize_nodeid(s: str, default_ns: int = 2) -> str:
+    """
+    Convert a possibly non-canonical NodeId string to canonical form.
+
+    If already canonical (ns=X;Y=...), returns unchanged.
+    Otherwise, wraps the string as ns={default_ns};s={string}.
+
+    Examples:
+        canonicalize_nodeid("ns=2;s=Temperature") -> "ns=2;s=Temperature"
+        canonicalize_nodeid("PET001CalcAlarm") -> "ns=2;s=PET001CalcAlarm"
+        canonicalize_nodeid("Tank.Level") -> "ns=2;s=Tank.Level"
+
+    Args:
+        s: NodeId string (may or may not be canonical)
+        default_ns: Namespace index to use for non-canonical NodeIds (default: 2)
+
+    Returns:
+        Canonical NodeId string
+
+    Raises:
+        ValueError: If input is None, empty, or whitespace-only
+    """
+    s = (s or "").strip()
+    if not s:
+        raise ValueError("NodeId cannot be empty or whitespace-only")
+
+    # Already canonical - return as-is
+    if is_canonical_nodeid(s):
+        return s
+
+    # Non-canonical - wrap as string identifier
+    return f"ns={default_ns};s={s}"
+
+
 def build_namespace_map(server, nodeset_path: str) -> dict[int, int]:
     """
     Build a mapping from namespace indices in the nodeset XML to actual server indices.
@@ -614,14 +648,9 @@ def main():
 
     # New "skip, don't fix" behaviors:
     ap.add_argument(
-        "--drop-bad-nodeset-nodeids",
+        "--allow-non-canonical",
         action="store_true",
-        help="Drop nodes from the imported NodeSet that have non-canonical NodeIds (prevents import crash).",
-    )
-    ap.add_argument(
-        "--skip-bad-csv",
-        action="store_true",
-        help="Skip/log data rows with non-canonical TAGNAMEs, or writes that fail (BadNodeIdUnknown, etc.).",
+        help="Allow non-canonical NodeIds without auto-conversion (may violate OPC UA spec). By default, non-canonical TAGNAMEs like 'PET001' are auto-converted to 'ns=2;s=PET001'.",
     )
 
     # Namespace mapping control:
@@ -720,14 +749,6 @@ def main():
 
     nodeset_path = args.nodeset
     tmp_nodeset = None
-
-    if args.drop_bad_nodeset_nodeids:
-        tmp_nodeset, dropped_nodes, dropped_refs = drop_bad_nodeset_nodes(args.nodeset)
-        nodeset_path = tmp_nodeset
-        if not args.quiet:
-            print(
-                f"[NodeSet] Dropped {dropped_nodes} nodes with non-canonical NodeIds; dropped {dropped_refs} bad references"
-            )
 
     # Import NodeSet
     server.import_xml(nodeset_path)
@@ -836,11 +857,15 @@ def main():
                     time.sleep(delta / args.speed)
                 prev = ts
 
-                if args.skip_bad_csv and not is_canonical_nodeid(tagname):
-                    skipped += 1
-                    if not args.quiet:
-                        print(f"[SKIP CSV non-canonical TAGNAME] {tagname} @ {ts.isoformat()}")
-                    continue
+                # Auto-convert non-canonical NodeIds to canonical form (unless disabled)
+                if not args.allow_non_canonical:
+                    try:
+                        tagname = canonicalize_nodeid(tagname)
+                    except ValueError as e:
+                        skipped += 1
+                        if not args.quiet:
+                            print(f"[SKIP] Invalid TAGNAME: {e} @ {ts.isoformat()}")
+                        continue
 
                 # Remap namespace index from CSV to actual server index
                 remapped_tagname = tagname if _ns_identity else remap_nodeid(tagname, ns_map)
@@ -867,11 +892,9 @@ def main():
 
                 except Exception as ex:
                     skipped += 1
-                    if args.skip_bad_csv:
-                        if not args.quiet:
-                            print(f"[SKIP write failure] {tagname} @ {ts.isoformat()} ({ex})")
-                        continue
-                    raise
+                    if not args.quiet:
+                        print(f"[SKIP write failure] {tagname} @ {ts.isoformat()} ({ex})")
+                    continue
 
                 if not args.quiet and (i % 2000 == 0):
                     print(f"{ts.isoformat()} | processed={i} written={written} skipped={skipped}")
