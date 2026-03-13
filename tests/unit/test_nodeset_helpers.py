@@ -115,6 +115,107 @@ class TestCountVariablesInNodeset:
 
 
 @pytest.mark.unit
+class TestEventNotifierAttribute:
+    """Test that UAObject elements have EventNotifier attribute set."""
+
+    def test_objects_have_event_notifier_zero(self, tmp_path):
+        """Test that UAObject elements have EventNotifier='0' attribute."""
+        # Import here to test the actual generator
+        import pandas as pd
+
+        from opc_replay.to_nodeset import generate_nodeset_from_dataframe
+
+        # Create test data with hierarchical tags
+        data = {
+            "TAGNAME": ["Area1/Device1/Tag1", "Area1/Device1/Tag2", "Area2/Tag3"],
+            "TAGVALUE": [42.0, 43.5, 100.0],
+            "DATATYPE": ["Float", "Float", "Float"],
+        }
+        df = pd.DataFrame(data)
+
+        # Generate NodeSet
+        nodeset_xml = generate_nodeset_from_dataframe(
+            df=df,
+            root_name="TestRoot",
+            namespace_uri="urn:test:tags",
+            split_regex="/",
+            compact=False,
+        )
+
+        # Write to file for parsing
+        nodeset_path = tmp_path / "test.xml"
+        nodeset_path.write_text(nodeset_xml)
+
+        # Parse the generated XML
+        tree = ET.parse(str(nodeset_path))
+        root = tree.getroot()
+
+        # Define namespace
+        ns = {"ua": "http://opcfoundation.org/UA/2011/03/UANodeSet.xsd"}
+
+        # Find all UAObject elements
+        objects = root.findall("ua:UAObject", ns)
+
+        # Should have at least the root and folders
+        assert len(objects) > 0, "Should have UAObject elements"
+
+        # All UAObject elements should have EventNotifier="0"
+        for obj in objects:
+            assert "EventNotifier" in obj.attrib, (
+                f"UAObject {obj.get('NodeId')} missing EventNotifier attribute"
+            )
+            assert obj.get("EventNotifier") == "0", (
+                f"UAObject {obj.get('NodeId')} has wrong EventNotifier value"
+            )
+
+    def test_variables_do_not_have_event_notifier(self, tmp_path):
+        """Test that UAVariable elements do NOT have EventNotifier attribute."""
+        import pandas as pd
+
+        from opc_replay.to_nodeset import generate_nodeset_from_dataframe
+
+        # Create test data
+        data = {
+            "TAGNAME": ["Tag1", "Tag2"],
+            "TAGVALUE": [42.0, 43.5],
+            "DATATYPE": ["Float", "Float"],
+        }
+        df = pd.DataFrame(data)
+
+        # Generate NodeSet
+        nodeset_xml = generate_nodeset_from_dataframe(
+            df=df,
+            root_name="TestRoot",
+            namespace_uri="urn:test:tags",
+            split_regex=r"\.",
+            compact=False,
+        )
+
+        # Write to file for parsing
+        nodeset_path = tmp_path / "test.xml"
+        nodeset_path.write_text(nodeset_xml)
+
+        # Parse the generated XML
+        tree = ET.parse(str(nodeset_path))
+        root = tree.getroot()
+
+        # Define namespace
+        ns = {"ua": "http://opcfoundation.org/UA/2011/03/UANodeSet.xsd"}
+
+        # Find all UAVariable elements
+        variables = root.findall("ua:UAVariable", ns)
+
+        # Should have variables
+        assert len(variables) > 0, "Should have UAVariable elements"
+
+        # UAVariable elements should NOT have EventNotifier attribute
+        for var in variables:
+            assert "EventNotifier" not in var.attrib, (
+                f"UAVariable {var.get('NodeId')} should not have EventNotifier attribute"
+            )
+
+
+@pytest.mark.unit
 class TestNamespaceCache:
     """Test namespace cache save/load functions."""
 

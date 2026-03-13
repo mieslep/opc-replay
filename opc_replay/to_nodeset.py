@@ -112,7 +112,7 @@ def generate_nodeset_from_dataframe(
     namespace_uri: str = None,
     split_regex: str = r"\.",
     no_folders: bool = False,
-    compact: bool = None,
+    compact: bool = False,
 ) -> str:
     """
     Generate OPC UA NodeSet2 XML from a DataFrame with TAGNAME, DATATYPE, and optionally TAGVALUE.
@@ -125,7 +125,7 @@ def generate_nodeset_from_dataframe(
         split_regex: Regex to split tag names into folder hierarchy (default: "\\.")
         no_folders: If True, place all variables under root without folder hierarchy
         compact: If True, skip pretty-printing for faster generation and smaller files.
-                 If None (default), auto-detect based on tag count (compact for >5000 tags)
+                 Default: False (pretty-printed for readability)
 
     Returns:
         XML string of the NodeSet
@@ -206,6 +206,7 @@ def generate_nodeset_from_dataframe(
         {
             "NodeId": root_obj_nodeid,
             "BrowseName": f"{namespace_index}:{root_name}",
+            "EventNotifier": "0",
         },
     )
     ET.SubElement(root_obj, f"{{{NS_UA}}}DisplayName").text = root_name
@@ -232,6 +233,7 @@ def generate_nodeset_from_dataframe(
                 {
                     "NodeId": folder_nodeid,
                     "BrowseName": f"{namespace_index}:{part}",
+                    "EventNotifier": "0",
                 },
             )
             ET.SubElement(obj, f"{{{NS_UA}}}DisplayName").text = part
@@ -294,10 +296,6 @@ def generate_nodeset_from_dataframe(
         v = ET.SubElement(val, f"{{{NS_UAX}}}{tag}")
         v.text = cast_text(value, dtype)
 
-    # Auto-detect compact mode for large nodesets (>5000 tags)
-    if compact is None:
-        compact = len(df) > 5000
-
     return pretty_xml(root, compact=compact)
 
 
@@ -344,6 +342,11 @@ Examples:
         "--no-folders",
         action="store_true",
         help="Do not create folder hierarchy; put all variables under root",
+    )
+    ap.add_argument(
+        "--no-pretty",
+        action="store_true",
+        help="Skip pretty-printing for faster generation and smaller files",
     )
     args = ap.parse_args()
 
@@ -393,6 +396,7 @@ Examples:
         namespace_uri=args.namespace_uri,
         split_regex=args.split_regex,
         no_folders=args.no_folders,
+        compact=args.no_pretty,
     )
 
     # Write to file

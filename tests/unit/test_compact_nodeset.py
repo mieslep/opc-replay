@@ -1,8 +1,7 @@
 """
 Tests for NodeSet XML generation compact mode.
 
-Tests that compact mode (no pretty-printing) produces valid, smaller XML files
-for large nodesets (>5000 tags).
+Tests that compact mode (no pretty-printing) can be controlled via the compact parameter.
 """
 
 import xml.etree.ElementTree as ET
@@ -17,27 +16,23 @@ from opc_replay.to_nodeset import generate_nodeset_from_dataframe
 class TestCompactMode:
     """Test compact mode for NodeSet generation."""
 
-    def test_compact_mode_auto_enabled_for_large_nodesets(self, tmp_path):
-        """Test compact mode is automatically enabled for >5000 tags."""
-        # Create dataframe with 5001 tags (just over threshold)
-        tag_count = 5001
+    def test_default_uses_pretty_printing(self):
+        """Test that default behavior uses pretty-printing."""
         df = pd.DataFrame(
             {
-                "TAGNAME": [f"ns=1;s=Tag{i:05d}" for i in range(tag_count)],
-                "DATATYPE": ["Float"] * tag_count,
-                "TAGVALUE": [0.0] * tag_count,
+                "TAGNAME": ["ns=1;s=Tag1", "ns=1;s=Tag2"],
+                "DATATYPE": ["Float", "Float"],
+                "TAGVALUE": [1.0, 2.0],
             }
         )
 
+        # Default should use pretty-printing
         xml_content = generate_nodeset_from_dataframe(
             df=df, root_name="TestSystem", namespace_index=1, no_folders=True
         )
 
-        # Compact mode should have minimal whitespace
-        # Check that there are no indentation spaces (pretty-printing adds "  ")
-        lines = xml_content.split("\n")
-        # In compact mode, most content is on fewer lines
-        assert len(lines) < 100  # Compact mode has minimal newlines
+        # Should have pretty indentation
+        assert "  " in xml_content  # Has indentation spaces
 
     def test_compact_mode_explicit_true(self):
         """Test compact mode can be explicitly enabled."""
@@ -121,37 +116,32 @@ class TestCompactMode:
         # Should save at least 10% (typically 12-15% for small nodesets, more for large ones)
         assert size_compact < size_pretty * 0.90
 
-    def test_compact_threshold_5000_tags(self):
-        """Test auto-detection threshold is exactly 5000 tags."""
-        # 5000 tags should use pretty mode
-        df_5000 = pd.DataFrame(
+    def test_large_nodesets_pretty_by_default(self):
+        """Test that even large nodesets use pretty-printing by default."""
+        # Create dataframe with many tags
+        tag_count = 1000
+        df = pd.DataFrame(
             {
-                "TAGNAME": [f"ns=1;s=Tag{i}" for i in range(5000)],
-                "DATATYPE": ["Float"] * 5000,
-                "TAGVALUE": [0.0] * 5000,
+                "TAGNAME": [f"ns=1;s=Tag{i:05d}" for i in range(tag_count)],
+                "DATATYPE": ["Float"] * tag_count,
+                "TAGVALUE": [0.0] * tag_count,
             }
         )
 
-        xml_5000 = generate_nodeset_from_dataframe(
-            df=df_5000, root_name="TestSystem", namespace_index=1, no_folders=True
+        # Default should still be pretty even for large nodesets
+        xml_content = generate_nodeset_from_dataframe(
+            df=df, root_name="TestSystem", namespace_index=1, no_folders=True
         )
 
         # Should have pretty-printing (has indentation)
-        assert "  " in xml_5000
+        assert "  " in xml_content
 
-        # 5001 tags should use compact mode
-        df_5001 = pd.DataFrame(
-            {
-                "TAGNAME": [f"ns=1;s=Tag{i}" for i in range(5001)],
-                "DATATYPE": ["Float"] * 5001,
-                "TAGVALUE": [0.0] * 5001,
-            }
-        )
-
-        xml_5001 = generate_nodeset_from_dataframe(
-            df=df_5001, root_name="TestSystem", namespace_index=1, no_folders=True
+        # But can explicitly use compact mode
+        xml_compact = generate_nodeset_from_dataframe(
+            df=df, root_name="TestSystem", namespace_index=1, no_folders=True, compact=True
         )
 
         # Compact mode has very minimal newlines
-        lines_5001 = xml_5001.split("\n")
-        assert len(lines_5001) < 100  # Much fewer lines in compact mode
+        lines_compact = xml_compact.split("\n")
+        lines_pretty = xml_content.split("\n")
+        assert len(lines_compact) < len(lines_pretty)  # Compact has fewer lines
