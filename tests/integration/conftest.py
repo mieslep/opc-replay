@@ -134,28 +134,44 @@ def opcua_test_server():
         # Wait for OPC UA server to be ready
         print("   Waiting for OPC UA server to be ready...", end="", flush=True)
         if not wait_for_server(timeout=10.0):
-            # Server failed to start - capture output
-            stdout, stderr = process.communicate(timeout=1.0)
-            process.kill()
-            pytest.fail(
-                f"OPC UA server failed to start within 10s\n"
-                f"stdout: {stdout.decode()}\n"
-                f"stderr: {stderr.decode()}"
-            )
+            # Server failed to start - terminate and capture output
+            process.terminate()
+            try:
+                stdout, stderr = process.communicate(timeout=5.0)
+                error_msg = (
+                    f"OPC UA server failed to start within 10s\n"
+                    f"stdout: {stdout.decode()}\n"
+                    f"stderr: {stderr.decode()}"
+                )
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+                error_msg = (
+                    "OPC UA server failed to start within 10s (process did not terminate cleanly)"
+                )
+            pytest.fail(error_msg)
 
         print(" OK")
 
         # Wait for HTTP API to be ready
         print("   Waiting for HTTP API to be ready...", end="", flush=True)
         if not wait_for_http_api(api_base="http://localhost:8080", timeout=10.0):
-            # API failed to start
-            stdout, stderr = process.communicate(timeout=1.0)
-            process.kill()
-            pytest.fail(
-                f"HTTP API failed to start within 10s\n"
-                f"stdout: {stdout.decode()}\n"
-                f"stderr: {stderr.decode()}"
-            )
+            # API failed to start - terminate and capture output
+            process.terminate()
+            try:
+                stdout, stderr = process.communicate(timeout=5.0)
+                error_msg = (
+                    f"HTTP API failed to start within 10s\n"
+                    f"stdout: {stdout.decode()}\n"
+                    f"stderr: {stderr.decode()}"
+                )
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+                error_msg = (
+                    "HTTP API failed to start within 10s (process did not terminate cleanly)"
+                )
+            pytest.fail(error_msg)
 
         print(" OK")
 
