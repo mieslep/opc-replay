@@ -70,7 +70,40 @@ opc-inject --file examples/simple-injection.json
 
 Watch the client to see the injected values appear immediately!
 
-### 4. Run the Demo Client Script
+### 4. Explore Client Monitoring Modes
+
+Try different monitoring modes and output formats:
+
+```bash
+# Default: subscription mode (push-based, efficient)
+opc-client
+
+# Read nodemap and exit (no monitoring)
+opc-client --read-nodemap --all-namespaces
+
+# CSV output with quiet mode (30-second summaries)
+opc-client --format csv --report-frequency 30 > monitoring.csv
+
+# JSON output (line-delimited)
+opc-client --format json > monitoring.json
+
+# Polling mode with statistics
+opc-client --read-mode poll --poll-interval 2 --show-stats --report-frequency 15
+
+# Monitor specific namespace only
+opc-client --namespace 2
+```
+
+**Monitoring modes:**
+- **Subscription mode** (default): Server pushes changes, efficient for thousands of tags
+- **Polling mode**: Client reads all tags periodically, legacy mode
+
+**Output formats:**
+- Console (default): Human-readable tables
+- CSV: `timestamp,node_id,browse_name,value`
+- JSON: Line-delimited JSON objects
+
+### 5. Run the Demo Client Script
 
 ```bash
 python examples/demo_client.py

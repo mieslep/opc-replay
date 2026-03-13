@@ -128,18 +128,50 @@ opc-inject --clear
 
 ### `opc-client` - Monitoring Client
 
-Connect to an OPC UA server and monitor tag changes (polls continuously by default):
+Connect to an OPC UA server and monitor tag changes with multiple monitoring modes and output formats:
 
 ```bash
-# Connect to local server (polls forever)
+# Subscribe to all changes (default - push-based, efficient)
 opc-client
 
 # Connect to remote server
 opc-client --endpoint opc.tcp://192.168.1.100:4840/
 
-# Monitor specific namespace with limited polls
-opc-client --namespace 2 --poll-count 10 --poll-interval 1
+# Read nodemap statistics and exit
+opc-client --read-nodemap --all-namespaces
+
+# CSV output with periodic summaries
+opc-client --format csv --report-frequency 30 > output.csv
+
+# JSON output
+opc-client --format json > output.json
+
+# Polling mode (legacy - periodic reads)
+opc-client --read-mode poll --poll-interval 2.0
+
+# Show connection statistics
+opc-client --show-stats --report-frequency 15
+
+# Monitor specific namespace
+opc-client --namespace 2
 ```
+
+**Monitoring Modes:**
+- `--read-mode subscribe` (default) - Push-based subscriptions, efficient for thousands of tags
+- `--read-mode poll` - Periodic polling, legacy mode
+
+**Output Formats:**
+- `--format console` (default) - Human-readable tables
+- `--format csv` - CSV rows (timestamp,node_id,browse_name,value)
+- `--format json` - Line-delimited JSON (JSONL)
+
+**Additional Options:**
+- `--read-nodemap` - Print nodemap statistics and exit (no monitoring)
+- `--all-namespaces` - Browse all namespaces (ns=0,1,2,...)
+- `--report-frequency N` - Quiet mode: show summaries every N seconds
+- `--show-stats` - Display connection statistics (uptime, reads, changes, errors)
+- `--namespace N` - Monitor specific namespace index
+- `--namespace-uri URI` - Monitor by namespace URI
 
 ## Data Format
 
