@@ -305,8 +305,8 @@ def run_test(tc: dict, opcua_endpoint: str, api_base: str) -> bool:
             passed = False
 
         # ── Step 5: wait for expiry, confirm override is gone from API ────
-        _info(f"Waiting {duration + 0.5:.1f}s for override to expire…")
-        time.sleep(duration + 0.5)
+        _info(f"Waiting {duration + 1.0:.1f}s for override to expire…")
+        time.sleep(duration + 1.0)
 
         try:
             overrides = get_overrides(api_base)

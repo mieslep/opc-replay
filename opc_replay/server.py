@@ -705,7 +705,7 @@ def main():
             f.write(xml_content)
 
         if not args.quiet:
-            print(f"[Auto-NodeSet] ✓ Generated: {auto_nodeset_path}")
+            print(f"[Auto-NodeSet] Generated: {auto_nodeset_path}")
             print(
                 f"[Auto-NodeSet] Tip: Reuse with --nodeset {auto_nodeset_path} for faster startup"
             )
@@ -767,7 +767,7 @@ def main():
             mismatched_indices.append((csv_idx, server_idx, "remapped"))
 
     if needs_mapping and not args.allow_ns_mismatch:
-        print("\n⚠️  ERROR: Namespace index mismatch detected!")
+        print("\n[WARNING] ERROR: Namespace index mismatch detected!")
         print(f"   CSV uses namespace indices: {sorted(csv_ns_indices)}")
         print(f"   Namespace mapping: {ns_map}")
         print("\n   Mismatches detected:")
@@ -785,13 +785,13 @@ def main():
     if not args.quiet:
         if needs_mapping:
             print(
-                "[Namespace remapping] CSV → Server:",
+                "[Namespace remapping] CSV -> Server:",
                 {c: s for c, s, _ in mismatched_indices},
             )
             print("[Using automatic namespace remapping (--allow-ns-mismatch enabled)]")
         else:
             print(
-                f"[Namespace validation] CSV indices {sorted(csv_ns_indices)} align with server ✓"
+                f"[Namespace validation] CSV indices {sorted(csv_ns_indices)} align with server [OK]"
             )
 
     # Pre-compute: if ns_map is identity (all indices unchanged), skip regex on every row

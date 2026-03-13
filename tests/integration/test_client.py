@@ -157,7 +157,7 @@ def test_opcua_client_monitor(
         except KeyboardInterrupt:
             print("\n\nStopped by user")
 
-        print(f"\n✓ Completed {poll_num} polls")
+        print(f"\n[OK] Completed {poll_num} polls")
 
         # Assertions for pytest
         assert len(variables) > 0, "Should find at least one variable in the namespace"

@@ -372,7 +372,7 @@ Examples:
 
     unique_tags = df["TAGNAME"].nunique()
     ns_uri = args.namespace_uri or f"urn:{args.root_name.lower()}:tags"
-    print(f"✓ Wrote {args.out}")
+    print(f"[OK] Wrote {args.out}")
     print(f"  {unique_tags} unique variables")
     print(f"  root={args.root_name}")
     print(f"  ns={args.namespace_index}")

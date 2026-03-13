@@ -70,7 +70,7 @@ def test_load_logic():
     for col in expected_columns:
         assert col in df.columns, f"Missing expected column: {col}"
 
-    print("\n✓ All checks passed")
+    print("\n[OK] All checks passed")
 
 
 if __name__ == "__main__":

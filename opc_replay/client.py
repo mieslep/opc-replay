@@ -123,9 +123,9 @@ Examples:
 
     try:
         client.connect()
-        print("✓ Connected\n")
+        print("[OK] Connected\n")
     except Exception as e:
-        print(f"✗ Connection failed: {e}", file=sys.stderr)
+        print(f"[ERROR] Connection failed: {e}", file=sys.stderr)
         print(f"\nIs the OPC UA server running at {args.endpoint}?", file=sys.stderr)
         sys.exit(1)
 
@@ -143,10 +143,10 @@ Examples:
             # Find namespace by URI
             try:
                 target_ns = namespaces.index(args.namespace_uri)
-                print(f"\n✓ Found namespace URI '{args.namespace_uri}' at ns={target_ns}")
+                print(f"\n[OK] Found namespace URI '{args.namespace_uri}' at ns={target_ns}")
             except ValueError:
                 print(
-                    f"\n✗ ERROR: Namespace URI '{args.namespace_uri}' not found on server",
+                    f"\n[ERROR] Namespace URI '{args.namespace_uri}' not found on server",
                     file=sys.stderr,
                 )
                 print("Available namespaces:", file=sys.stderr)
@@ -157,12 +157,12 @@ Examples:
             # Validate namespace index
             if target_ns >= len(namespaces):
                 print(
-                    f"\n✗ ERROR: Namespace index {target_ns} does not exist on server",
+                    f"\n[ERROR] Namespace index {target_ns} does not exist on server",
                     file=sys.stderr,
                 )
                 print(f"Server has namespaces 0-{len(namespaces) - 1}", file=sys.stderr)
                 sys.exit(1)
-            print(f"\n✓ Monitoring namespace ns={target_ns}")
+            print(f"\n[OK] Monitoring namespace ns={target_ns}")
         else:
             # Auto-select: find first non-standard namespace (skip ns=0 and ns=1)
             for i in range(2, len(namespaces)):
@@ -171,13 +171,13 @@ Examples:
 
             if target_ns is None:
                 print(
-                    "\n✗ ERROR: No custom namespaces found (only standard ns=0 and ns=1)",
+                    "\n[ERROR] No custom namespaces found (only standard ns=0 and ns=1)",
                     file=sys.stderr,
                 )
                 print("The server may not have any custom tags loaded.", file=sys.stderr)
                 sys.exit(1)
 
-            print(f"\n✓ Auto-selected namespace ns={target_ns}: {namespaces[target_ns]}")
+            print(f"\n[OK] Auto-selected namespace ns={target_ns}: {namespaces[target_ns]}")
 
         # Discover variables
         print(f"\nDiscovering variables in ns={target_ns}...")
@@ -187,7 +187,7 @@ Examples:
         variables = browse_variables(objects, target_ns)
 
         if not variables:
-            print(f"\n✗ No variables found in ns={target_ns}", file=sys.stderr)
+            print(f"\n[ERROR] No variables found in ns={target_ns}", file=sys.stderr)
             print("The namespace may be empty or contain only folders/objects.", file=sys.stderr)
             sys.exit(1)
 
@@ -240,11 +240,11 @@ Examples:
                 if successful_reads == 0 and failed_reads > 0:
                     # All reads failed - likely connection problem
                     consecutive_errors += 1
-                    print(f"\n✗ Connection error: All reads failed ({last_error})", file=sys.stderr)
+                    print(f"\n[ERROR] Connection error: All reads failed ({last_error})", file=sys.stderr)
 
                     if consecutive_errors >= max_consecutive_errors:
                         print(
-                            f"\n✗ Lost connection to server after {consecutive_errors} failed attempts",
+                            f"\n[ERROR] Lost connection to server after {consecutive_errors} failed attempts",
                             file=sys.stderr,
                         )
                         print("  Server may have stopped. Exiting...", file=sys.stderr)
@@ -291,10 +291,10 @@ Examples:
         except KeyboardInterrupt:
             print("\n\nStopped by user")
 
-        print(f"\n✓ Completed {poll_num} polls")
+        print(f"\n[OK] Completed {poll_num} polls")
 
     except Exception as e:
-        print(f"\n✗ ERROR: {e}", file=sys.stderr)
+        print(f"\n[ERROR] {e}", file=sys.stderr)
         import traceback
 
         traceback.print_exc()

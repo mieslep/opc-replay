@@ -47,7 +47,7 @@ try:
             print(f"{tag_id:20s} = ERROR: {e}")
 
     print()
-    print("✓ Demo complete")
+    print("[OK] Demo complete")
 
 finally:
     client.disconnect()

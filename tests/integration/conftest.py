@@ -4,6 +4,8 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -17,6 +19,16 @@ def is_server_available(host="localhost", port=4840, timeout=1.0):
         result = sock.connect_ex((host, port))
         sock.close()
         return result == 0
+    except Exception:
+        return False
+
+
+def is_http_api_available(api_base="http://localhost:8080", timeout=1.0):
+    """Check if HTTP injection API is available."""
+    try:
+        req = urllib.request.Request(f"{api_base.rstrip('/')}/inject", method="GET")
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status == 200
     except Exception:
         return False
 
@@ -43,6 +55,27 @@ def wait_for_server(host="localhost", port=4840, timeout=10.0, check_interval=0.
     return False
 
 
+def wait_for_http_api(api_base="http://localhost:8080", timeout=10.0, check_interval=0.2):
+    """
+    Wait for HTTP injection API to become available.
+
+    Args:
+        api_base: API base URL
+        timeout: Maximum seconds to wait
+        check_interval: Seconds between checks
+
+    Returns:
+        True if API became available, False if timeout
+    """
+    elapsed = 0.0
+    while elapsed < timeout:
+        if is_http_api_available(api_base, timeout=1.0):
+            return True
+        time.sleep(check_interval)
+        elapsed += check_interval
+    return False
+
+
 @pytest.fixture(scope="session")
 def opcua_test_server():
     """
@@ -57,7 +90,7 @@ def opcua_test_server():
     # Check if server is already running
     if is_server_available():
         # Use existing server
-        print("\n⚠ OPC UA server already running on localhost:4840 - using existing server")
+        print("\n[!] OPC UA server already running on localhost:4840 - using existing server")
         yield {
             "endpoint": "opc.tcp://localhost:4840/",
             "api_base": "http://localhost:8080",
@@ -73,7 +106,7 @@ def opcua_test_server():
     if not test_data.exists():
         pytest.fail(f"Test data not found: {test_data}")
 
-    print(f"\n🚀 Starting OPC UA test server with {test_data.name}...")
+    print(f"\n[*] Starting OPC UA test server with {test_data.name}...")
 
     try:
         # Start server process
@@ -98,8 +131,8 @@ def opcua_test_server():
             cwd=Path(__file__).parent.parent.parent,  # workspace root
         )
 
-        # Wait for server to be ready
-        print("   Waiting for server to be ready...", end="", flush=True)
+        # Wait for OPC UA server to be ready
+        print("   Waiting for OPC UA server to be ready...", end="", flush=True)
         if not wait_for_server(timeout=10.0):
             # Server failed to start - capture output
             stdout, stderr = process.communicate(timeout=1.0)
@@ -110,7 +143,21 @@ def opcua_test_server():
                 f"stderr: {stderr.decode()}"
             )
 
-        print(" ✓ Server ready")
+        print(" OK")
+
+        # Wait for HTTP API to be ready
+        print("   Waiting for HTTP API to be ready...", end="", flush=True)
+        if not wait_for_http_api(api_base="http://localhost:8080", timeout=10.0):
+            # API failed to start
+            stdout, stderr = process.communicate(timeout=1.0)
+            process.kill()
+            pytest.fail(
+                f"HTTP API failed to start within 10s\n"
+                f"stdout: {stdout.decode()}\n"
+                f"stderr: {stderr.decode()}"
+            )
+
+        print(" OK")
 
         # Yield server info to tests
         yield {
@@ -123,13 +170,13 @@ def opcua_test_server():
     finally:
         # Cleanup: stop server if we started it
         if process is not None and process.poll() is None:
-            print("\n🛑 Stopping OPC UA test server...")
+            print("\n[*] Stopping OPC UA test server...")
             process.terminate()
             try:
                 process.wait(timeout=5.0)
-                print("   ✓ Server stopped cleanly")
+                print("   OK Server stopped cleanly")
             except subprocess.TimeoutExpired:
-                print("   ⚠ Server didn't stop gracefully, killing...")
+                print("   [!] Server didn't stop gracefully, killing...")
                 process.kill()
                 process.wait()
 
