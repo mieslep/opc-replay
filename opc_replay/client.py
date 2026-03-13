@@ -240,7 +240,10 @@ Examples:
                 if successful_reads == 0 and failed_reads > 0:
                     # All reads failed - likely connection problem
                     consecutive_errors += 1
-                    print(f"\n[ERROR] Connection error: All reads failed ({last_error})", file=sys.stderr)
+                    print(
+                        f"\n[ERROR] Connection error: All reads failed ({last_error})",
+                        file=sys.stderr,
+                    )
 
                     if consecutive_errors >= max_consecutive_errors:
                         print(

@@ -423,8 +423,10 @@ def start_injection_api(store: OverrideStore, port: int, quiet: bool = False):
     httpd.timeout = 0.5
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
+    # Give the thread a moment to start listening
+    time.sleep(0.5)
     if not quiet:
-        print(f"[API] Injection API listening on http://0.0.0.0:{port}/inject")
+        print(f"[API] Injection API listening on http://0.0.0.0:{port}/inject", flush=True)
     return httpd
 
 

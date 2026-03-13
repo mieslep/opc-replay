@@ -24,13 +24,17 @@ def is_server_available(host="localhost", port=4840, timeout=1.0):
 
 
 def is_http_api_available(api_base="http://localhost:8080", timeout=1.0):
-    """Check if HTTP injection API is available."""
+    """Check if HTTP injection API is available. Returns (available, error_msg)."""
     try:
         req = urllib.request.Request(f"{api_base.rstrip('/')}/inject", method="GET")
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.status == 200
-    except Exception:
-        return False
+            return (True, None) if resp.status == 200 else (False, f"HTTP {resp.status}")
+    except urllib.error.HTTPError as e:
+        return (False, f"HTTP {e.code}: {e.reason}")
+    except urllib.error.URLError as e:
+        return (False, f"URL error: {e.reason}")
+    except Exception as e:
+        return (False, f"{type(e).__name__}: {e}")
 
 
 def wait_for_server(host="localhost", port=4840, timeout=10.0, check_interval=0.2):
@@ -47,9 +51,14 @@ def wait_for_server(host="localhost", port=4840, timeout=10.0, check_interval=0.
         True if server became available, False if timeout
     """
     elapsed = 0.0
+    attempts = 0
     while elapsed < timeout:
         if is_server_available(host, port, timeout=1.0):
             return True
+        attempts += 1
+        # Print progress every 2 seconds
+        if attempts % 10 == 0:
+            print(f" {elapsed:.1f}s", end="", flush=True)
         time.sleep(check_interval)
         elapsed += check_interval
     return False
@@ -65,15 +74,23 @@ def wait_for_http_api(api_base="http://localhost:8080", timeout=10.0, check_inte
         check_interval: Seconds between checks
 
     Returns:
-        True if API became available, False if timeout
+        (success, last_error_msg): True/False and the last error encountered
     """
     elapsed = 0.0
+    last_error = None
+    attempts = 0
     while elapsed < timeout:
-        if is_http_api_available(api_base, timeout=1.0):
-            return True
+        available, error_msg = is_http_api_available(api_base, timeout=1.0)
+        if available:
+            return (True, None)
+        last_error = error_msg
+        attempts += 1
+        # Print progress every 2 seconds
+        if attempts % 10 == 0:
+            print(f" {elapsed:.1f}s", end="", flush=True)
         time.sleep(check_interval)
         elapsed += check_interval
-    return False
+    return (False, last_error)
 
 
 @pytest.fixture(scope="session")
@@ -155,15 +172,30 @@ def opcua_test_server():
 
         # Wait for HTTP API to be ready
         print("   Waiting for HTTP API to be ready...", end="", flush=True)
-        if not wait_for_http_api(api_base="http://localhost:8080", timeout=10.0):
+        api_success, api_error = wait_for_http_api(api_base="http://localhost:8080", timeout=20.0)
+        if not api_success:
+            # API failed to start - check if port is bound
+            port_bound = is_server_available("localhost", 8080, timeout=0.5)
+            process_running = process.poll() is None
+
             # API failed to start - terminate and capture output
+            print(" FAILED")
+            print(f"   Last error: {api_error}")
+            print(f"   Port 8080 bound: {port_bound}")
+            print(f"   Process running: {process_running}")
             process.terminate()
             try:
                 stdout, stderr = process.communicate(timeout=5.0)
+                # Show recent output
+                stdout_lines = stdout.decode().strip().split("\n")
+                stderr_lines = stderr.decode().strip().split("\n")
                 error_msg = (
-                    f"HTTP API failed to start within 10s\n"
-                    f"stdout: {stdout.decode()}\n"
-                    f"stderr: {stderr.decode()}"
+                    f"HTTP API failed to start within 20s\n"
+                    f"Last error from health check: {api_error}\n"
+                    f"\nRecent stdout (last 10 lines):\n"
+                    f"{chr(10).join(stdout_lines[-10:]) if stdout_lines else '(empty)'}\n"
+                    f"\nRecent stderr (last 10 lines):\n"
+                    f"{chr(10).join(stderr_lines[-10:]) if stderr_lines else '(empty)'}"
                 )
             except subprocess.TimeoutExpired:
                 process.kill()
