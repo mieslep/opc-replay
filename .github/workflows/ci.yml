@@ -7,6 +7,16 @@ on:
     branches: [ main, develop ]
 
 jobs:
+  version-check:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Check version consistency
+      run: |
+        chmod +x scripts/check_version_sync.sh
+        ./scripts/check_version_sync.sh
+
   test:
     runs-on: ${{ matrix.os }}
     strategy:
