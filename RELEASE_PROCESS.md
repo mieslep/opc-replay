@@ -2,6 +2,20 @@
 
 This document describes the complete release workflow for opc-replay.
 
+## Quick Start: Automated Release
+
+**For most releases, use the automated release script:**
+
+```bash
+./scripts/prepare_release.sh
+```
+
+The script handles version bumping, changelog updates, validation checks, git operations, and prompts for human review at key checkpoints. See [Automated Release Process](#automated-release-process) below for details.
+
+**For manual releases or troubleshooting, see [Manual Release Process](#manual-release-process).**
+
+---
+
 ## Versioning Strategy
 
 We follow [Semantic Versioning](https://semver.org/):
@@ -20,26 +34,193 @@ Releases are created and managed by project maintainers only. Contributors shoul
 
 Before starting a release, ensure:
 
-- [ ] All desired features/fixes are merged to `main` branch
-- [ ] All CI checks pass on `main` (tests, linting, build)
+- [ ] All desired features/fixes are merged to `main` branch via Pull Requests
+- [ ] All CI checks pass on `main` (tests, linting, format, build, version-check)
 - [ ] Documentation is up-to-date (README.md, docstrings, examples)
+- [ ] CHANGELOG.md has entries in `[Unreleased]` section
 - [ ] Local validation passes: `./scripts/run_ci_locally.sh`
 - [ ] Breaking changes are documented and justified
 - [ ] Migration guide added (for major/minor with breaking changes)
 
-## Release Steps
+---
 
-### 1. Update Version Number
+## Automated Release Process
 
-Edit `pyproject.toml` and update the version:
+### Overview
 
+The `./scripts/prepare_release.sh` script automates most of the release workflow while providing validation checkpoints for human review.
+
+### What the Script Does
+
+1. **Version Selection** - Prompts for release type (major/minor/patch/custom)
+2. **Pre-Release Validation** - Runs all CI checks locally (tests, linting, build)
+3. **Version Updates** - Updates `pyproject.toml` and `opc_replay/__init__.py`
+4. **Changelog Generation** - Moves `[Unreleased]` items to versioned section with date
+5. **Review Pause** - Shows diff and allows manual edits before committing
+6. **Git Commit** - Creates commit: `Release vX.Y.Z`
+7. **Git Tag** - Creates annotated tag: `vX.Y.Z`
+8. **Push Confirmation** - Asks before pushing (triggers GitHub workflows)
+9. **Optional: GitHub Release** - If `gh` CLI is available, offers to auto-create release with changelog
+10. **Post-Release Bump** - Prompts for next dev version (e.g., `X.(Y+1).0-dev`)
+11. **Dev Version Commit** - Commits and optionally pushes dev version
+
+### Prerequisites
+
+**Required:**
+- Git configured and authenticated
+- Clean working directory (no uncommitted changes)
+- All desired changes merged to current branch
+
+**Optional (but recommended):**
+- [GitHub CLI (`gh`)](https://cli.github.com/) installed and authenticated
+  - Enables automatic GitHub Release creation
+  - Install: `brew install gh` / `apt install gh` / `winget install GitHub.cli`
+  - Authenticate: `gh auth login`
+  - Without `gh`, you'll need to create the release manually via GitHub UI
+
+### Using the Script
+
+**1. Start the Release:**
+
+```bash
+./scripts/prepare_release.sh
+```
+
+**2. Follow Interactive Prompts:**
+
+- **Select version type**: Choose 1-4 for major/minor/patch/custom
+- **Confirm version**: Review the calculated version number
+- **Wait for validation**: Script runs all tests and checks
+- **Review changes**: Examine the diff, especially CHANGELOG.md
+- **Edit if needed**: Press Enter after any manual edits
+- **Confirm commit**: Approve creating the release commit
+- **Confirm tag**: Approve creating the git tag
+- **Confirm push**: Approve pushing to GitHub (triggers CI)
+- **Select next dev version**: Choose development version for next cycle
+- **Confirm dev bump**: Approve committing the dev version
+
+**3. Create GitHub Release:**
+
+*If using automated script with gh CLI:*
+- The script will offer to create the release automatically after pushing the tag
+- It extracts the changelog section and creates the release with proper title and notes
+- Publishing triggers the PyPI upload workflow automatically
+
+*If creating manually:*
+
+After the script pushes the tag:
+1. Go to GitHub → Releases → "Draft a new release"
+2. Select the tag (e.g., `v0.11.0`)
+3. Copy the changelog entry for this version as the description
+4. Title: `Release v0.11.0`
+5. Click "Publish release" (triggers PyPI upload)
+
+*Or via gh CLI:*
+```bash
+gh release create v0.11.0 --title "Release v0.11.0" --notes-file <(sed -n '/## \[0.11.0\]/,/## \[/p' CHANGELOG.md | head -n -1)
+```
+
+**4. Verify Publication:**
+
+```bash
+# Check PyPI
+open https://pypi.org/project/opc-replay/
+
+# Test installation
+pip install opc-replay==X.Y.Z
+
+# Verify CLI commands
+opc-replay --help
+opc-client --help
+opc-inject --help
+```
+
+### Validation Checkpoints
+
+The script pauses for human validation at these points:
+
+1. **After version selection** - Confirm the calculated version
+2. **After changelog generation** - Review and edit CHANGELOG.md if needed
+3. **Before creating commit** - Confirm commit creation
+4. **Before creating tag** - Confirm tag creation
+5. **Before pushing** - Confirm push to GitHub (triggers workflows)
+6. **After release** - Select and confirm next dev version
+
+### Hotfix Releases
+
+For urgent fixes that can't wait for the next regular release:
+
+**1. Create hotfix branch from release tag:**
+
+```bash
+git checkout -b hotfix/0.10.1 v0.10.0
+```
+
+**2. Apply fixes:**
+
+```bash
+# Cherry-pick commits or make fixes directly
+git cherry-pick <commit-hash>
+# Or: Make fixes and commit
+git add .
+git commit -m "Fix critical bug"
+
+# Update CHANGELOG.md manually
+```
+
+**3. Run release script:**
+
+```bash
+./scripts/prepare_release.sh
+```
+
+- Select option 4 (custom version)
+- Enter the patch version (e.g., `0.10.1`)
+- Follow normal release process
+
+**4. Merge back to main:**
+
+```bash
+git checkout main
+git merge hotfix/0.10.1
+# Resolve any conflicts (especially version files and CHANGELOG)
+git push origin main
+```
+
+**5. Complete release:**
+
+- Create GitHub Release from the hotfix tag
+- Verify PyPI publication
+- Test installation
+
+---
+
+## Manual Release Process
+
+Use this process if the automated script fails or for special circumstances.
+
+### 1. Update Version Numbers
+
+Edit both version files to match:
+
+**pyproject.toml:**
 ```toml
 [project]
 name = "opc-replay"
 version = "0.10.0"  # <- Update this line
 ```
 
+**opc_replay/__init__.py:**
+```python
+__version__ = "0.10.0"  # <- Update this line
+```
+
 **Convention**: Use format `MAJOR.MINOR.PATCH` without `-dev` or `-rc` suffixes.
+
+**Verify consistency:**
+```bash
+./scripts/check_version_sync.sh
+```
 
 ### 2. Update CHANGELOG.md
 
@@ -82,8 +263,8 @@ Add version comparison link at the bottom:
 Create a dedicated commit for the version bump:
 
 ```bash
-git add pyproject.toml CHANGELOG.md
-git commit -m "Bump version to 0.10.0"
+git add pyproject.toml opc_replay/__init__.py CHANGELOG.md
+git commit -m "Release vX.Y.Z"
 git push origin main
 ```
 
@@ -204,6 +385,58 @@ gh release create "v${VERSION}" \
 - [ ] Close related GitHub issues/milestones
 - [ ] Update documentation website (if applicable)
 - [ ] Consider blog post for major releases
+
+### 9. Bump to Next Development Version
+
+After releasing `X.Y.Z`, prepare for the next development cycle:
+
+**1. Update version files:**
+
+```bash
+# Example: After releasing 0.10.0, bump to 0.11.0-dev
+```
+
+**pyproject.toml:**
+```toml
+version = "0.11.0-dev"  # Next minor version with -dev suffix
+```
+
+**opc_replay/__init__.py:**
+```python
+__version__ = "0.11.0-dev"
+```
+
+**2. Update CHANGELOG.md:**
+
+Ensure there's an `[Unreleased]` section at the top:
+
+```markdown
+## [Unreleased]
+
+### Added
+
+### Changed
+
+### Fixed
+
+## [0.10.0] - 2026-03-20
+...
+```
+
+**3. Commit and push:**
+
+```bash
+git add pyproject.toml opc_replay/__init__.py CHANGELOG.md
+git commit -m "Bump version to 0.11.0-dev"
+git push origin main
+```
+
+**Version Selection for Next Dev:**
+- After regular release: Bump minor version (0.10.0 → 0.11.0-dev)
+- After hotfix: Keep minor, bump patch (0.10.1 → 0.10.2-dev) if more hotfixes expected
+- After hotfix: Or bump minor (0.10.1 → 0.11.0-dev) if returning to feature development
+
+---
 
 ## Rollback Procedures
 
