@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **BREAKING:** Removed `--skip-bad-csv` and `--drop-bad-nodeset-nodeids` flags (no longer needed with auto-conversion)
 
+### Fixed
+- **Statistics poll count reliability** - Fixed intermittent test failure on macOS where extremely fast polls (duration = 0.0s) were not being counted in statistics
+
 ## [0.9.0] - 2026-03-13
 
 ### Added

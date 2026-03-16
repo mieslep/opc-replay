@@ -52,7 +52,7 @@ class StatisticsCollector:
                 self._failed_reads += node_count
 
             self._total_read_duration += duration
-            if duration > 0:
+            if duration >= 0:
                 self._poll_count += 1
 
     def record_change(self, node_id: str):
