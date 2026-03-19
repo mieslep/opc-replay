@@ -21,14 +21,12 @@ dependencies = [
     "opcua>=0.98.13",
     "pandas>=3.0.1",
     "pyarrow>=23.0.1",
-    "pytest>=9.0.2",
-    "pytest-mock>=3.14.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "ipykernel>=7.2.0",
-    "ipywidgets>=8.1.8",
+    "pytest>=9.0.2",
+    "pytest-mock>=3.14.0",
 ]
 
 [project.scripts]
@@ -90,4 +88,6 @@ ignore = [
 dev = [
     "build>=1.4.0",
     "ruff>=0.15.5",
+    "pytest>=9.0.2",
+    "pytest-mock>=3.14.0",
 ]

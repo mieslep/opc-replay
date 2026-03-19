@@ -725,7 +725,7 @@ def main():
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="Logging verbosity level (default: INFO)"
+        help="Logging verbosity level (default: INFO)",
     )
 
     # NodeSet auto-generation:
@@ -782,15 +782,11 @@ def main():
     if log_level == logging.DEBUG:
         # DEBUG: Show timestamps and logger names
         logging.basicConfig(
-            level=logging.DEBUG,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         )
     else:
         # INFO/WARNING/ERROR: Clean format without timestamps
-        logging.basicConfig(
-            level=log_level,
-            format='%(message)s'
-        )
+        logging.basicConfig(level=log_level, format="%(message)s")
         # Always suppress opcua library warnings unless DEBUG
         logging.getLogger("opcua").setLevel(logging.ERROR)
 
@@ -863,7 +859,9 @@ def main():
         unique_tag_count = len(tag_defs)
 
         mode_info = " (compact mode for faster import)" if unique_tag_count > 5000 else ""
-        logger.info("[Auto-NodeSet] Generating from %d unique tags%s...", unique_tag_count, mode_info)
+        logger.info(
+            "[Auto-NodeSet] Generating from %d unique tags%s...", unique_tag_count, mode_info
+        )
 
         # Generate NodeSet XML
         xml_content = generate_nodeset_from_dataframe(
@@ -883,8 +881,7 @@ def main():
 
         logger.info("[Auto-NodeSet] Generated: %s", auto_nodeset_path)
         logger.info(
-            "[Auto-NodeSet] Tip: Reuse with --nodeset %s for faster startup",
-            auto_nodeset_path
+            "[Auto-NodeSet] Tip: Reuse with --nodeset %s for faster startup", auto_nodeset_path
         )
 
         args.nodeset = auto_nodeset_path
@@ -986,8 +983,7 @@ def main():
         logger.warning("[Using automatic namespace remapping (--allow-ns-mismatch enabled)]")
     else:
         logger.info(
-            "[Namespace validation] CSV indices %s align with server [OK]",
-            sorted(csv_ns_indices)
+            "[Namespace validation] CSV indices %s align with server [OK]", sorted(csv_ns_indices)
         )
 
     # Print timing summary
@@ -1082,7 +1078,13 @@ def main():
                     continue
 
                 if i % 2000 == 0:
-                    logger.info("%s | processed=%d written=%d skipped=%d", ts.isoformat(), i, written, skipped)
+                    logger.info(
+                        "%s | processed=%d written=%d skipped=%d",
+                        ts.isoformat(),
+                        i,
+                        written,
+                        skipped,
+                    )
 
             if not args.loop:
                 break

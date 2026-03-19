@@ -165,7 +165,7 @@ Examples:
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="Logging verbosity level (default: INFO)"
+        help="Logging verbosity level (default: INFO)",
     )
 
     # Nodemap reading
@@ -182,15 +182,11 @@ Examples:
     if log_level == logging.DEBUG:
         # DEBUG: Show timestamps and logger names
         logging.basicConfig(
-            level=logging.DEBUG,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         )
     else:
         # INFO/WARNING/ERROR: Clean format
-        logging.basicConfig(
-            level=log_level,
-            format='%(message)s'
-        )
+        logging.basicConfig(level=log_level, format="%(message)s")
         # Always suppress opcua library warnings unless DEBUG
         logging.getLogger("opcua").setLevel(logging.ERROR)
 

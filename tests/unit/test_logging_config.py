@@ -83,29 +83,31 @@ class TestLoggingConfiguration:
     def test_default_log_level_is_warning(self):
         """Test that the default log level is INFO in all three CLI tools."""
         import argparse
+
+        # Can't easily parse the argparse default without running main(),
+        # but we can check by inspecting the source
+        import inspect
         import io
         import sys
 
         # Test opc-replay (server)
         import opc_replay.server
-        # Can't easily parse the argparse default without running main(),
-        # but we can check by inspecting the source
-        import inspect
+
         source = inspect.getsource(opc_replay.server.main)
         # Look for the --log-level argument definition
-        assert '--log-level' in source
+        assert "--log-level" in source
         assert 'default="INFO"' in source or "default='INFO'" in source
 
         # Test opc-replay-inject
         import opc_replay.inject_tags
+
         source = inspect.getsource(opc_replay.inject_tags.main)
-        assert '--log-level' in source
+        assert "--log-level" in source
         assert 'default="INFO"' in source or "default='INFO'" in source
 
         # Test opc-replay-client
         import opc_replay.client
+
         source = inspect.getsource(opc_replay.client.main)
-        assert '--log-level' in source
+        assert "--log-level" in source
         assert 'default="INFO"' in source or "default='INFO'" in source
-
-

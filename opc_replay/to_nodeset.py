@@ -173,7 +173,9 @@ def generate_nodeset_from_dataframe(
                 for orig, conv in zip(examples, converted_examples, strict=False)
             ]
         )
-        logger.info("[Auto-convert] Canonicalized %d TAGNAMEs (examples: %s)", len(non_canonical), pairs)
+        logger.info(
+            "[Auto-convert] Canonicalized %d TAGNAMEs (examples: %s)", len(non_canonical), pairs
+        )
 
     if df.empty:
         raise ValueError("No valid TAGNAMEs found in DataFrame")

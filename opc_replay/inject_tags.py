@@ -201,7 +201,7 @@ def main():
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="Logging verbosity level (default: INFO)"
+        help="Logging verbosity level (default: INFO)",
     )
 
     args = ap.parse_args()
@@ -210,7 +210,9 @@ def main():
     log_level = getattr(logging, args.log_level)
     logging.basicConfig(
         level=log_level,
-        format='%(message)s' if log_level >= logging.INFO else '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        format="%(message)s"
+        if log_level >= logging.INFO
+        else "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
 
     if args.list:
