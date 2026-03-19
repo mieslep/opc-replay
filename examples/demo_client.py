@@ -3,7 +3,7 @@
 Simple demonstration of connecting to OPC UA server and reading values.
 
 This is a minimal example showing how to use the opcua library directly.
-For a full-featured monitoring tool, use the opc-client command instead.
+For a full-featured monitoring tool, use the opc-replay-client command instead.
 
 Usage:
     python examples/demo_client.py

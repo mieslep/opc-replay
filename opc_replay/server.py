@@ -21,6 +21,7 @@ For detailed options, run: opc-replay --help
 
 import argparse
 import json
+import logging
 import os
 import re
 import tempfile
@@ -52,6 +53,9 @@ VARIANT_TYPE = {
 
 UA_NS = "http://opcfoundation.org/UA/2011/03/UANodeSet.xsd"
 NS = {"ua": UA_NS}
+
+# Module logger
+logger = logging.getLogger(__name__)
 
 
 def is_canonical_nodeid(s: str) -> bool:
@@ -382,7 +386,7 @@ class InjectionHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format, *args):
         # Prefix with [API] for clarity in combined log
-        print(f"[API] {self.address_string()} - {format % args}")
+        logger.info("[API] %s - %s", self.address_string(), format % args)
 
     def _send_json(self, obj, code=200):
         body = json.dumps(obj, default=str).encode()
@@ -481,7 +485,6 @@ def run_override_applier(
     store: OverrideStore,
     server,
     ns_map: dict,
-    quiet: bool,
     stop_event: threading.Event,
     poll_interval_s: float = 0.1,
 ):
@@ -510,11 +513,10 @@ def run_override_applier(
                 dv.ServerTimestamp = now
                 node.set_value(dv)
             except Exception as ex:
-                if not quiet:
-                    print(f"[OVERRIDE applier error] {tagname}: {ex}")
+                logger.error("[OVERRIDE applier error] %s: %s", tagname, ex)
 
 
-def start_injection_api(store: OverrideStore, port: int, quiet: bool = False):
+def start_injection_api(store: OverrideStore, port: int):
     """Launch the injection HTTP API on a daemon thread."""
     InjectionHandler.override_store = store
     httpd = HTTPServer(("0.0.0.0", port), InjectionHandler)
@@ -523,8 +525,7 @@ def start_injection_api(store: OverrideStore, port: int, quiet: bool = False):
     thread.start()
     # Give the thread a moment to start listening
     time.sleep(0.5)
-    if not quiet:
-        print(f"[API] Injection API listening on http://0.0.0.0:{port}/inject", flush=True)
+    logger.info("[API] Injection API listening on http://0.0.0.0:%d/inject", port)
     return httpd
 
 
@@ -593,7 +594,7 @@ def load_and_prepare_data(
 
     # Sort and save if requested (preprocessing step for faster subsequent runs)
     if sort_and_save:
-        print(f"[Data] Sorting {len(df)} rows by {ts_col}...")
+        logger.info("[Data] Sorting %d rows by %s...", len(df), ts_col)
         df = df.sort_values(ts_col)
 
         # Generate sorted filename
@@ -603,14 +604,14 @@ def load_and_prepare_data(
         sorted_path = f"{base}_sorted{ext}"
 
         # Write sorted file
-        print(f"[Data] Writing sorted data to {sorted_path}...")
+        logger.info("[Data] Writing sorted data to %s...", sorted_path)
         if sorted_path.lower().endswith(".parquet"):
             df.to_parquet(sorted_path, index=False)
         else:
             df.to_csv(sorted_path, index=False)
 
-        print(f"[Data] Sorted file saved: {sorted_path}")
-        print(f"[Data] Use --data {sorted_path} for faster startup next time")
+        logger.info("[Data] Sorted file saved: %s", sorted_path)
+        logger.info("[Data] Use --data %s for faster startup next time", sorted_path)
     # Otherwise assume data is already sorted (skip expensive sort operation)
 
     # Apply offset BEFORE max_rows
@@ -720,7 +721,12 @@ def main():
     ap.add_argument(
         "--warmup", type=float, default=0.0, help="Seconds to wait before replay begins"
     )
-    ap.add_argument("--quiet", action="store_true", help="Reduce per-update logging")
+    ap.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Logging verbosity level (default: INFO)",
+    )
 
     # NodeSet auto-generation:
     ap.add_argument(
@@ -770,6 +776,20 @@ def main():
 
     args = ap.parse_args()
 
+    # Configure logging based on --log-level
+    log_level = getattr(logging, args.log_level)
+
+    if log_level == logging.DEBUG:
+        # DEBUG: Show timestamps and logger names
+        logging.basicConfig(
+            level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
+    else:
+        # INFO/WARNING/ERROR: Clean format without timestamps
+        logging.basicConfig(level=log_level, format="%(message)s")
+        # Always suppress opcua library warnings unless DEBUG
+        logging.getLogger("opcua").setLevel(logging.ERROR)
+
     # Support legacy --csv argument
     data_file = args.data if args.data else args.csv
     if not data_file:
@@ -803,14 +823,13 @@ def main():
 
     _timing_data_load = time.time() - _timing_data_load_start
 
-    if not args.quiet:
-        print(f"[Data] Loaded {len(df)} rows from {data_file}")
-        if args.offset > 0:
-            print(f"[Data] Offset: Skipped first {args.offset}s")
-        print(f"[Data] Time range: {df[args.ts_col].min()} to {df[args.ts_col].max()}")
-        duration = (df[args.ts_col].max() - df[args.ts_col].min()).total_seconds()
-        print(f"[Data] Duration: {duration:.1f}s ({duration / 60:.1f} min)")
-        # Skip expensive .nunique() - will get count from nodeset later
+    logger.info("[Data] Loaded %d rows from %s", len(df), data_file)
+    if args.offset > 0:
+        logger.info("[Data] Offset: Skipped first %ss", args.offset)
+    logger.info("[Data] Time range: %s to %s", df[args.ts_col].min(), df[args.ts_col].max())
+    duration = (df[args.ts_col].max() - df[args.ts_col].min()).total_seconds()
+    logger.info("[Data] Duration: %.1fs (%.1f min)", duration, duration / 60)
+    # Skip expensive .nunique() - will get count from nodeset later
 
     unique_tag_count = None  # Will be computed from nodeset or tag_defs
 
@@ -839,9 +858,10 @@ def main():
         tag_defs = df[["TAGNAME", "DATATYPE", "TAGVALUE"]].drop_duplicates(subset=["TAGNAME"])
         unique_tag_count = len(tag_defs)
 
-        if not args.quiet:
-            mode_info = " (compact mode for faster import)" if unique_tag_count > 5000 else ""
-            print(f"[Auto-NodeSet] Generating from {unique_tag_count} unique tags{mode_info}...")
+        mode_info = " (compact mode for faster import)" if unique_tag_count > 5000 else ""
+        logger.info(
+            "[Auto-NodeSet] Generating from %d unique tags%s...", unique_tag_count, mode_info
+        )
 
         # Generate NodeSet XML
         xml_content = generate_nodeset_from_dataframe(
@@ -859,26 +879,26 @@ def main():
 
         _timing_nodeset_gen = time.time() - _timing_nodeset_gen_start
 
-        if not args.quiet:
-            print(f"[Auto-NodeSet] Generated: {auto_nodeset_path}")
-            print(
-                f"[Auto-NodeSet] Tip: Reuse with --nodeset {auto_nodeset_path} for faster startup"
-            )
+        logger.info("[Auto-NodeSet] Generated: %s", auto_nodeset_path)
+        logger.info(
+            "[Auto-NodeSet] Tip: Reuse with --nodeset %s for faster startup", auto_nodeset_path
+        )
 
         args.nodeset = auto_nodeset_path
     else:
         _timing_nodeset_gen = 0.0
 
     # Get unique tag count from existing nodeset if not already computed
-    if unique_tag_count is None and not args.quiet:
+    # Only do this for INFO level or higher (expensive operation)
+    if unique_tag_count is None and logger.isEnabledFor(logging.INFO):
         _timing_count_start = time.time()
         unique_tag_count = count_variables_in_nodeset(args.nodeset)
         _timing_count = time.time() - _timing_count_start
     else:
         _timing_count = 0.0
 
-    if not args.quiet and unique_tag_count is not None:
-        print(f"[Data] Unique tags: {unique_tag_count}")
+    if unique_tag_count is not None:
+        logger.info("[Data] Unique tags: %d", unique_tag_count)
 
     _timing_server_init_start = time.time()
 
@@ -892,8 +912,7 @@ def main():
     tmp_nodeset = None
 
     # Import NodeSet
-    if not args.quiet:
-        print(f"[NodeSet] Importing {nodeset_path}... (may take 10-30s for large nodesets)")
+    logger.info("[NodeSet] Importing %s... (may take 10-30s for large nodesets)", nodeset_path)
     _timing_import_start = time.time()
     server.import_xml(nodeset_path)
     _timing_import = time.time() - _timing_import_start
@@ -908,10 +927,9 @@ def main():
     _timing_ns_map = time.time() - _timing_ns_map_start
     ns_array = server.get_namespace_array()
 
-    if not args.quiet:
-        print("[Server namespaces]")
-        for i, ns in enumerate(ns_array):
-            print(f"  ns={i}: {ns}")
+    logger.debug("[Server namespaces]")
+    for i, ns in enumerate(ns_array):
+        logger.debug("  ns=%d: %s", i, ns)
 
     # Check CSV for namespace indices and detect mismatches
     df_sample = df.head(100)  # Check first 100 rows for CSV namespace indices
@@ -939,46 +957,49 @@ def main():
             mismatched_indices.append((csv_idx, server_idx, "remapped"))
 
     if needs_mapping and not args.allow_ns_mismatch:
-        print("\n[WARNING] ERROR: Namespace index mismatch detected!")
-        print(f"   CSV uses namespace indices: {sorted(csv_ns_indices)}")
-        print(f"   Namespace mapping: {ns_map}")
-        print("\n   Mismatches detected:")
+        logger.error("")
+        logger.error("[WARNING] ERROR: Namespace index mismatch detected!")
+        logger.error("   CSV uses namespace indices: %s", sorted(csv_ns_indices))
+        logger.error("   Namespace mapping: %s", ns_map)
+        logger.error("")
+        logger.error("   Mismatches detected:")
         for csv_idx, srv_idx, reason in mismatched_indices:
             if reason == "not found":
-                print(f"   - CSV ns={csv_idx} has no corresponding server namespace")
+                logger.error("   - CSV ns=%d has no corresponding server namespace", csv_idx)
             else:
-                print(f"   - CSV ns={csv_idx} maps to server ns={srv_idx}")
-        print("\n   Solutions:")
-        print("   1) Regenerate nodeset to match CSV namespace indices")
-        print("   2) Use --allow-ns-mismatch flag to enable automatic namespace remapping")
+                logger.error("   - CSV ns=%d maps to server ns=%d", csv_idx, srv_idx)
+        logger.error("")
+        logger.error("   Solutions:")
+        logger.error("   1) Regenerate nodeset to match CSV namespace indices")
+        logger.error("   2) Use --allow-ns-mismatch flag to enable automatic namespace remapping")
         server.stop()
         return
 
-    if not args.quiet:
-        if needs_mapping:
-            print(
-                "[Namespace remapping] CSV -> Server:",
-                {c: s for c, s, _ in mismatched_indices},
-            )
-            print("[Using automatic namespace remapping (--allow-ns-mismatch enabled)]")
-        else:
-            print(
-                f"[Namespace validation] CSV indices {sorted(csv_ns_indices)} align with server [OK]"
-            )
+    if needs_mapping:
+        logger.warning(
+            "[Namespace remapping] CSV -> Server: %s",
+            {c: s for c, s, _ in mismatched_indices},
+        )
+        logger.warning("[Using automatic namespace remapping (--allow-ns-mismatch enabled)]")
+    else:
+        logger.info(
+            "[Namespace validation] CSV indices %s align with server [OK]", sorted(csv_ns_indices)
+        )
 
     # Print timing summary
     _timing_total = time.time() - _timing_start
-    if not args.quiet:
-        print("\n[Timing] Startup breakdown:")
-        print(f"  Data load: {_timing_data_load:.2f}s")
-        if _timing_nodeset_gen > 0:
-            print(f"  NodeSet generation: {_timing_nodeset_gen:.2f}s")
-        if _timing_count > 0:
-            print(f"  Tag count: {_timing_count:.2f}s")
-        print(f"  NodeSet import: {_timing_import:.2f}s")
-        print(f"  Server start: {_timing_start_server:.2f}s")
-        print(f"  Namespace mapping: {_timing_ns_map:.2f}s")
-        print(f"  Total startup: {_timing_total:.2f}s\n")
+    logger.debug("")
+    logger.debug("[Timing] Startup breakdown:")
+    logger.debug("  Data load: %.2fs", _timing_data_load)
+    if _timing_nodeset_gen > 0:
+        logger.debug("  NodeSet generation: %.2fs", _timing_nodeset_gen)
+    if _timing_count > 0:
+        logger.debug("  Tag count: %.2fs", _timing_count)
+    logger.debug("  NodeSet import: %.2fs", _timing_import)
+    logger.debug("  Server start: %.2fs", _timing_start_server)
+    logger.debug("  Namespace mapping: %.2fs", _timing_ns_map)
+    logger.debug("  Total startup: %.2fs", _timing_total)
+    logger.debug("")
 
     # Pre-compute: if ns_map is identity (all indices unchanged), skip regex on every row
     _ns_identity = all(k == v for k, v in ns_map.items())
@@ -987,17 +1008,16 @@ def main():
     override_store = OverrideStore()
     httpd = None
     if args.api_port > 0:
-        httpd = start_injection_api(override_store, args.api_port, quiet=args.quiet)
+        httpd = start_injection_api(override_store, args.api_port)
 
     _applier_stop = threading.Event()
     _applier_thread = threading.Thread(
         target=run_override_applier,
-        args=(override_store, server, ns_map, args.quiet, _applier_stop),
+        args=(override_store, server, ns_map, _applier_stop),
         daemon=True,
     )
     _applier_thread.start()
-    if not args.quiet:
-        print("[Override applier] Background thread started (polls every 100 ms)")
+    logger.debug("[Override applier] Background thread started (polls every 100 ms)")
 
     try:
         if args.warmup > 0:
@@ -1026,8 +1046,7 @@ def main():
                         tagname = canonicalize_nodeid(tagname)
                     except ValueError as e:
                         skipped += 1
-                        if not args.quiet:
-                            print(f"[SKIP] Invalid TAGNAME: {e} @ {ts.isoformat()}")
+                        logger.warning("[SKIP] Invalid TAGNAME: %s @ %s", e, ts.isoformat())
                         continue
 
                 # Remap namespace index from CSV to actual server index
@@ -1055,12 +1074,17 @@ def main():
 
                 except Exception as ex:
                     skipped += 1
-                    if not args.quiet:
-                        print(f"[SKIP write failure] {tagname} @ {ts.isoformat()} ({ex})")
+                    logger.warning("[SKIP write failure] %s @ %s (%s)", tagname, ts.isoformat(), ex)
                     continue
 
-                if not args.quiet and (i % 2000 == 0):
-                    print(f"{ts.isoformat()} | processed={i} written={written} skipped={skipped}")
+                if i % 2000 == 0:
+                    logger.info(
+                        "%s | processed=%d written=%d skipped=%d",
+                        ts.isoformat(),
+                        i,
+                        written,
+                        skipped,
+                    )
 
             if not args.loop:
                 break

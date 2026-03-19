@@ -1,4 +1,5 @@
 import argparse
+import logging
 import re
 import xml.etree.ElementTree as ET
 from datetime import date
@@ -7,6 +8,9 @@ from xml.dom import minidom
 import pandas as pd
 
 from opc_replay.server import canonicalize_nodeid, is_canonical_nodeid
+
+# Module logger
+logger = logging.getLogger(__name__)
 
 # ---- UA namespaces ----
 NS_UA = "http://opcfoundation.org/UA/2011/03/UANodeSet.xsd"
@@ -169,7 +173,9 @@ def generate_nodeset_from_dataframe(
                 for orig, conv in zip(examples, converted_examples, strict=False)
             ]
         )
-        print(f"[Auto-convert] Canonicalized {len(non_canonical)} TAGNAMEs (examples: {pairs})")
+        logger.info(
+            "[Auto-convert] Canonicalized %d TAGNAMEs (examples: %s)", len(non_canonical), pairs
+        )
 
     if df.empty:
         raise ValueError("No valid TAGNAMEs found in DataFrame")

@@ -12,37 +12,38 @@ Supports two monitoring modes:
 Usage examples:
 
   # Subscribe to changes in all namespaces (default mode)
-  opc-client
+  opc-replay-client
 
   # Monitor specific namespace
-  opc-client --namespace 2
+  opc-replay-client --namespace 2
 
   # Monitor by namespace URI
-  opc-client --namespace-uri "http://example.com/simple"
+  opc-replay-client --namespace-uri "http://example.com/simple"
 
   # Use polling mode instead of subscriptions
-  opc-client --read-mode poll --poll-interval 2.0
+  opc-replay-client --read-mode poll --poll-interval 2.0
 
   # Read nodemap statistics and exit
-  opc-client --read-nodemap
+  opc-replay-client --read-nodemap
 
   # Browse all namespaces
-opc-client --all-namespaces
+  opc-replay-client --all-namespaces
 
   # Output as CSV
-  opc-client --format csv > output.csv
+  opc-replay-client --format csv > output.csv
 
   # Quiet mode with periodic summaries
-  opc-client --report-frequency 30
+  opc-replay-client --report-frequency 30
 
   # Show connection statistics
-  opc-client --show-stats --report-frequency 15
+  opc-replay-client --show-stats --report-frequency 15
 
   # Connect to remote server
-  opc-client --endpoint opc.tcp://192.168.1.100:4840/
+  opc-replay-client --endpoint opc.tcp://192.168.1.100:4840/
 """
 
 import argparse
+import logging
 import sys
 import time
 
@@ -56,6 +57,9 @@ from .browser import NodeBrowser
 from .formatters import create_formatter
 from .monitor import PollingMonitor, SubscriptionMonitor
 from .statistics import StatisticsCollector
+
+# Module logger
+logger = logging.getLogger(__name__)
 
 
 def main():
@@ -158,10 +162,10 @@ Examples:
         help="Display connection statistics with reports",
     )
     parser.add_argument(
-        "--verbose",
-        "-v",
-        action="store_true",
-        help="Enable verbose output (shows subscription progress details)",
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Logging verbosity level (default: INFO)",
     )
 
     # Nodemap reading
@@ -172,6 +176,19 @@ Examples:
     )
 
     args = parser.parse_args()
+
+    # Configure logging
+    log_level = getattr(logging, args.log_level)
+    if log_level == logging.DEBUG:
+        # DEBUG: Show timestamps and logger names
+        logging.basicConfig(
+            level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
+    else:
+        # INFO/WARNING/ERROR: Clean format
+        logging.basicConfig(level=log_level, format="%(message)s")
+        # Always suppress opcua library warnings unless DEBUG
+        logging.getLogger("opcua").setLevel(logging.ERROR)
 
     # Connect to server
     print(f"Connecting to {args.endpoint}...")
@@ -312,7 +329,7 @@ Examples:
                 nodes,
                 stats,
                 max_nodes_per_subscription=args.max_nodes_per_subscription,
-                verbose=args.verbose,
+                verbose=(args.log_level == "DEBUG"),
             )
         else:
             print(f"Starting polling monitor (interval: {args.poll_interval}s)...\n")

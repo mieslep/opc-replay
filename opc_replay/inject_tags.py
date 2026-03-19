@@ -5,25 +5,25 @@ Client script to inject tag overrides into a running OPC UA replay server.
 Usage examples:
 
   # Single tag injection (override for 60 seconds, starting immediately):
-  python inject_tags.py --tag "ns=2;s=PET001.Temperature" --value 95.5 --duration 60
+  opc-replay-inject --tag "ns=2;s=PET001.Temperature" --value 95.5 --duration 60
 
   # Delayed injection (starts after 10 seconds, lasts 30 seconds):
-  python inject_tags.py --tag "ns=2;s=PET001.Pressure" --value 3.2 --offset 10 --duration 30
+  opc-replay-inject --tag "ns=2;s=PET001.Pressure" --value 3.2 --offset 10 --duration 30
 
   # Load multiple injections from a CSV file:
-  python inject_tags.py --file injections.csv
+  opc-replay-inject --file injections.csv
 
   # Load from a JSON file:
-  python inject_tags.py --file injections.json
+  opc-replay-inject --file injections.json
 
   # Target a different server/port:
-  python inject_tags.py --url http://localhost:9090 --tag "ns=2;s=Tag" --value 1
+  opc-replay-inject --url http://localhost:9090 --tag "ns=2;s=Tag" --value 1
 
   # List active overrides:
-  python inject_tags.py --list
+  opc-replay-inject --list
 
   # Clear all overrides:
-  python inject_tags.py --clear
+  opc-replay-inject --clear
 
 CSV file format (header required):
   tagname,value,time_offset_s,duration_s[,dtype]
@@ -47,9 +47,13 @@ JSON file format:
 import argparse
 import csv
 import json
+import logging
 import sys
 import urllib.error
 import urllib.request
+
+# Module logger
+logger = logging.getLogger(__name__)
 
 
 def send_injections(base_url: str, injections: list[dict]):
@@ -193,8 +197,23 @@ def main():
         "--dtype",
         help="Optional OPC UA data type hint, e.g. Float, Int32, Boolean (default: inferred from value type)",
     )
+    ap.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Logging verbosity level (default: INFO)",
+    )
 
     args = ap.parse_args()
+
+    # Configure logging
+    log_level = getattr(logging, args.log_level)
+    logging.basicConfig(
+        level=log_level,
+        format="%(message)s"
+        if log_level >= logging.INFO
+        else "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
 
     if args.list:
         list_overrides(args.url)

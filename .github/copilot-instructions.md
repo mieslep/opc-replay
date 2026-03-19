@@ -78,12 +78,12 @@ def load_data(file_path: str, ts_col: str) -> pd.DataFrame:
 
 3. **`opc_replay/client.py`**
    - Basic OPC UA client for monitoring
-   - CLI command: `opc-client`
+   - CLI command: `opc-replay-client`
    - Subscribes to tag updates and displays values
 
 4. **`opc_replay/inject_tags.py`**
    - Tag injection CLI
-   - CLI command: `opc-inject`
+   - CLI command: `opc-replay-inject`
    - Sends injection requests to the server's REST API
 
 5. **`opc_replay/to_nodeset.py`**
@@ -296,19 +296,19 @@ All three commands are defined in `[project.scripts]` in `pyproject.toml`:
 ### `opc-replay`
 Main replay server:
 ```bash
-opc-replay --data mydata.csv --ts-col TS --auto-nodeset [--speed 10] [--loop] [--offset 3600]
+uv run opc-replay --data mydata.csv --ts-col TS --auto-nodeset [--speed 10] [--loop] [--offset 3600]
 ```
 
-### `opc-client`
+### `opc-replay-client`
 Monitoring client:
 ```bash
-opc-client [--endpoint opc.tcp://localhost:4840]
+uv run opc-replay-client [--endpoint opc.tcp://localhost:4840]
 ```
 
-### `opc-inject`
+### `opc-replay-inject`
 Tag injection:
 ```bash
-opc-inject --tag "ns=2;s=Temperature" --value 99.9 [--duration 30] [--delay 5]
+uv run opc-replay-inject --tag "ns=2;s=Temperature" --value 99.9 [--duration 30] [--delay 5]
 ```
 
 ## Development Workflow
@@ -571,7 +571,7 @@ Follow the interactive prompts:
 - Confirm push to GitHub
 
 **2. Monitor GitHub Actions**
-- Wait for [pre-release-check workflow](.github/workflows/pre-release-check.yml) to complete
+- Wait for [pre-release-check workflow](workflows/pre-release-check.yml) to complete
 - This validates version consistency and changelog
 - If it fails, fix issues and re-tag
 
@@ -580,7 +580,7 @@ Follow the interactive prompts:
 *If using automated script with gh CLI:*
 - The script will offer to create the release automatically after pushing the tag
 - It extracts the changelog section and creates the release with proper title and notes
-- Publishing triggers [publish workflow](.github/workflows/publish.yml) → uploads to PyPI
+- Publishing triggers [publish workflow](workflows/publish.yml) → uploads to PyPI
 
 *If creating manually:*
 - Go to GitHub → Releases → "Draft a new release"
@@ -588,13 +588,13 @@ Follow the interactive prompts:
 - Copy changelog entry for this version as the description
 - Title: `Release v0.11.0`
 - Click "Publish release"
-- This triggers [publish workflow](.github/workflows/publish.yml) → uploads to PyPI
+- This triggers [publish workflow](workflows/publish.yml) → uploads to PyPI
 
 **4. Verify Publication**
 - Check PyPI page: https://pypi.org/project/opc-replay/
-- Test fresh install: `pip install opc-replay==X.Y.Z`
-- Verify all CLI commands work: `opc-replay --help`, `opc-client --help`, `opc-inject --help`
-- Run examples: `cd examples && ./demo_client.py`
+- Test fresh install in a new environment: `pip install opc-replay==X.Y.Z`
+- Verify CLI commands work after install: `opc-replay --help`, `opc-replay-client --help`, `opc-replay-inject --help`
+- Back in repo, run examples: `cd examples && uv run python demo_client.py`
 
 **5. Post-Release Tasks**
 - The script already bumped to next dev version
@@ -722,7 +722,7 @@ git revert HEAD  # or git reset --hard HEAD~1 if not pushed
 ```
 
 **PyPI publish failed:**
-- Check [publish workflow](.github/workflows/publish.yml) logs
+- Check [publish workflow](workflows/publish.yml) logs
 - Manual publish: `uv run python -m build && twine upload dist/*`
 - Set up PyPI token in GitHub secrets if trusted publishing fails
 
@@ -778,13 +778,16 @@ Key manual steps:
 
 ## Command Line Tool Usage
 
-Always use `uv run` to execute development tools and tests:
+**During development** (working on the codebase), always use `uv run`:
 - `uv run ruff check .` - Lint code
 - `uv run ruff format .` - Format code  
 - `uv run pytest tests/` - Run tests
 - `uv sync` - Install/sync dependencies
+- `uv run opc-replay --data file.csv --ts-col TS` - Test replay server
+- `uv run opc-replay-client` - Test monitoring client
+- `uv run opc-replay-inject --tag "ns=2;s=Tag" --value 123` - Test tag injection
 
-For production CLI tools (after installation):
+**After installation** (for end users via pip install):
 - `opc-replay --data file.csv --ts-col TS` - Start replay server
-- `opc-client` - Monitor OPC UA server
-- `opc-inject --tag "ns=2;s=Tag" --value 123` - Inject tag values
+- `opc-replay-client` - Monitor OPC UA server
+- `opc-replay-inject --tag "ns=2;s=Tag" --value 123` - Inject tag values

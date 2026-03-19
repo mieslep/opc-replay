@@ -131,8 +131,8 @@ pip install opc-replay==X.Y.Z
 
 # Verify CLI commands
 opc-replay --help
-opc-client --help
-opc-inject --help
+opc-replay-client --help
+opc-replay-inject --help
 ```
 
 ### Validation Checkpoints
@@ -294,8 +294,8 @@ Before releasing to production PyPI, validate with TestPyPI:
    
    # Verify commands work
    opc-replay --help
-   opc-client --help
-   opc-inject --help
+   opc-replay-client --help
+   opc-replay-inject --help
    
    # Clean up
    deactivate

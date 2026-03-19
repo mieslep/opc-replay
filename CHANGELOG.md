@@ -8,10 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [unreleased] 
 
 ### Added
+- **Consistent logging across all CLI tools** - All three commands (`opc-replay`, `opc-replay-client`, `opc-replay-inject`) now use Python's standard `logging` module with `--log-level` flag (DEBUG, INFO, WARNING, ERROR)
 
 ### Changed
+- **BREAKING:** Renamed CLI commands for namespace consistency: `opc-inject` → `opc-replay-inject` and `opc-client` → `opc-replay-client`. The main server command `opc-replay` remains unchanged.
+- **BREAKING:** Replaced `--quiet` and `--verbose` flags with `--log-level` for better logging control. Use `--log-level INFO` for standard output (default), `--log-level WARNING` for minimal output, `--log-level DEBUG` for detailed diagnostics.
 
 ### Fixed
+- **Suppressed opcua library warnings** - Internal opcua library warnings (like "Tried to read attribute" errors when clients read folders) are now hidden in normal operation. Use `--log-level DEBUG` to see full opcua library diagnostics if needed.
 
 ## [0.10.0] - 2026-03-16
 
@@ -40,18 +44,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Real-Time Tag Injection** - HTTP REST API for overriding tag values on-the-fly
   - Single and batch tag injection support
   - Time-delayed activation with configurable duration
-  - `opc-inject` CLI tool for easy override management
+  - `opc-replay-inject` CLI tool for easy override management
 - **OPC Client Monitor** - First-class monitoring command
   - Auto-discover namespaces and variables
   - Real-time tag value monitoring
-  - `opc-client` CLI tool
+  - `opc-replay-client` CLI tool
 - **Robust OPC UA Compliance**
   - Proper SourceTimestamp and ServerTimestamp handling
   - Type inference and casting
   - Graceful error handling for invalid NodeIds
 
 ### Package Structure
-- Entry points: `opc-replay`, `opc-inject`, `opc-client`
+- Entry points: `opc-replay`, `opc-replay-inject`, `opc-replay-client`
 - Comprehensive test suite (unit and integration tests)
 - Example data files and demonstration scripts
 - CI/CD with GitHub Actions
