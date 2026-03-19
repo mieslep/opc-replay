@@ -181,8 +181,8 @@ ns=2;s=Pressure,200.5,5,20,Float
 - **Start simple**: Use the example files to learn how everything works
 - **Speed control**: Adjust `--speed` (1-100+) to match your testing needs
 - **Loop mode**: Use `--loop` for continuous testing
-- **Max rows**: Use `--max-rows 100` to limit data during early testing
-- **Quiet mode**: Use `--quiet` to reduce logging noise
+- **Max rows**: Use `--max-rows 100` to limit data during early testing  
+- **Log levels**: Use `--log-level INFO` for operational messages, `--log-level DEBUG` for detailed information, `--log-level WARNING` (default) for minimal output
 
 ## Support
 

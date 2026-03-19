@@ -8,11 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [unreleased] 
 
 ### Added
+- **Consistent logging across all CLI tools** - All three commands (`opc-replay`, `opc-replay-client`, `opc-replay-inject`) now use Python's standard `logging` module with `--log-level` flag (DEBUG, INFO, WARNING, ERROR)
 
 ### Changed
 - **BREAKING:** Renamed CLI commands for namespace consistency: `opc-inject` → `opc-replay-inject` and `opc-client` → `opc-replay-client`. The main server command `opc-replay` remains unchanged.
+- **BREAKING:** Replaced `--quiet` and `--verbose` flags with `--log-level` for better logging control. Use `--log-level INFO` for standard output (default), `--log-level WARNING` for minimal output, `--log-level DEBUG` for detailed diagnostics.
 
 ### Fixed
+- **Suppressed opcua library warnings** - Internal opcua library warnings (like "Tried to read attribute" errors when clients read folders) are now hidden in normal operation. Use `--log-level DEBUG` to see full opcua library diagnostics if needed.
 
 ## [0.10.0] - 2026-03-16
 

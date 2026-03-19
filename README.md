@@ -103,6 +103,7 @@ opc-replay \
 - `--loop` - Loop playback forever
 - `--offset N` - Skip first N seconds
 - `--api-port PORT` - HTTP API port for tag injection (default: 8080, 0 to disable)
+- `--log-level LEVEL` - Logging verbosity: DEBUG, INFO (default), WARNING, ERROR
 - `--allow-non-canonical` - Allow non-canonical NodeIds without auto-conversion (advanced)
 
 ### `opc-replay-inject` - Tag Injection

@@ -47,9 +47,13 @@ JSON file format:
 import argparse
 import csv
 import json
+import logging
 import sys
 import urllib.error
 import urllib.request
+
+# Module logger
+logger = logging.getLogger(__name__)
 
 
 def send_injections(base_url: str, injections: list[dict]):
@@ -193,8 +197,21 @@ def main():
         "--dtype",
         help="Optional OPC UA data type hint, e.g. Float, Int32, Boolean (default: inferred from value type)",
     )
+    ap.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Logging verbosity level (default: INFO)"
+    )
 
     args = ap.parse_args()
+
+    # Configure logging
+    log_level = getattr(logging, args.log_level)
+    logging.basicConfig(
+        level=log_level,
+        format='%(message)s' if log_level >= logging.INFO else '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
 
     if args.list:
         list_overrides(args.url)

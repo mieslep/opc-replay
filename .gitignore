@@ -42,7 +42,7 @@ Thumbs.db
 *.log
 *.tmp
 *.bak
-*_auto_nodeset.xml
+*_auto_nodeset.xml*
 
 # Linting/formatting
 .ruff_cache/
