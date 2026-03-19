@@ -525,79 +525,100 @@ Before starting the release process, verify:
 - [ ] Run `./scripts/run_ci_locally.sh` successfully
 - [ ] Version numbers are in sync (checked by CI)
 
-### Automated Release Process
+### Manual Release Process (Required with Branch Protection)
 
-**Use the release preparation script for all releases:**
-
-```bash
-./scripts/prepare_release.sh
-```
-
-The script will:
-1. **Prompt for version type** - Select major/minor/patch or custom (for hotfixes)
-2. **Run validation** - Tests, linting, formatting, build
-3. **Update versions** - Changes `pyproject.toml` and `opc_replay/__init__.py`
-4. **Update CHANGELOG** - Moves `[Unreleased]` items to versioned section
-5. **Pause for review** - Shows diff, allows manual edits
-6. **Create commit** - Commits with message: `Release vX.Y.Z`
-7. **Create tag** - Annotated tag `vX.Y.Z`
-8. **Ask to push** - Confirms before pushing (triggers pre-release-check workflow)
-9. **Optional: Create GitHub Release** - If `gh` CLI is available and authenticated, offers to auto-create release with changelog
-10. **Prompt for next dev version** - Updates to `X.Y.Z-dev` for continued development
-11. **Commit dev version** - Prepares for next development cycle
-
-**Human validation gates:**
-- After changelog generation (review and edit if needed)
-- Before creating release commit
-- Before pushing tag (triggers workflows)
-- Before creating GitHub Release (if using gh CLI)
-- Before pushing dev version bump
-
-**Optional: GitHub CLI Integration:**
-If you have [GitHub CLI (`gh`)](https://cli.github.com/) installed and authenticated, the script will offer to automatically create the GitHub Release with the changelog extracted from CHANGELOG.md. This eliminates the manual step of creating the release via GitHub UI. If `gh` is not available or you decline, the script provides manual instructions.
+Since the repository has branch protection requiring PRs, the release process must be done manually through feature branches. The `prepare_release.sh` script is available for reference but assumes direct push access to `main`.
 
 ### Release Workflow Steps
 
-**1. Run Release Script**
+**IMPORTANT:** With branch protection enabled, releases must go through PRs. The workflow is:
+1. Create release branch with version updates → PR to main → merge
+2. Tag the merged commit on main → push tag
+3. Create GitHub Release → triggers PyPI publish
+4. Create dev version bump branch → PR to main → merge
+
+**1. Prepare Release Branch**
 ```bash
-./scripts/prepare_release.sh
+# Ensure you're on updated main
+git checkout main
+git pull origin main
+
+# Create release branch
+git checkout -b release/v0.X.Y
+
+# Update versions to 0.X.Y (remove -dev suffix)
+# Edit: pyproject.toml, opc_replay/__init__.py
+
+# Update CHANGELOG.md:
+# - Change [Unreleased] to [0.X.Y] - YYYY-MM-DD
+# - Add new empty [Unreleased] section above it
+# - Update version comparison links
+
+# Verify consistency
+./scripts/check_version_sync.sh
+
+# Commit
+git add -A
+git commit -m "Release v0.X.Y"
+
+# Push and create PR
+git push origin release/v0.X.Y
+# Create PR on GitHub: release/v0.X.Y → main
 ```
 
-Follow the interactive prompts:
-- Select release type (major/minor/patch/custom)
-- Review changes to CHANGELOG.md (edit if needed)
-- Confirm commit creation
-- Confirm tag creation
-- Confirm push to GitHub
+**2. After PR Merged, Tag the Release**
+```bash
+# Switch to main and pull the merged changes
+git checkout main
+git pull origin main
 
-**2. Monitor GitHub Actions**
+# Create and push annotated tag
+git tag -a v0.X.Y -m "Release v0.X.Y"
+git push origin v0.X.Y
+```
+
+**3. Monitor GitHub Actions**
 - Wait for [pre-release-check workflow](workflows/pre-release-check.yml) to complete
 - This validates version consistency and changelog
 - If it fails, fix issues and re-tag
 
-**3. Create GitHub Release**
+**4. Create GitHub Release**
 
-*If using automated script with gh CLI:*
-- The script will offer to create the release automatically after pushing the tag
-- It extracts the changelog section and creates the release with proper title and notes
-- Publishing triggers [publish workflow](workflows/publish.yml) → uploads to PyPI
-
-*If creating manually:*
+*Manually via GitHub UI:*
 - Go to GitHub → Releases → "Draft a new release"
 - Select the tag (e.g., `v0.11.0`)
-- Copy changelog entry for this version as the description
 - Title: `Release v0.11.0`
+- Copy the v0.X.Y section from CHANGELOG.md as the description
 - Click "Publish release"
 - This triggers [publish workflow](workflows/publish.yml) → uploads to PyPI
 
-**4. Verify Publication**
+**5. Verify Publication**
 - Check PyPI page: https://pypi.org/project/opc-replay/
 - Test fresh install in a new environment: `pip install opc-replay==X.Y.Z`
 - Verify CLI commands work after install: `opc-replay --help`, `opc-replay-client --help`, `opc-replay-inject --help`
 - Back in repo, run examples: `cd examples && uv run python demo_client.py`
 
-**5. Post-Release Tasks**
-- The script already bumped to next dev version
+**6. Bump to Next Dev Version**
+```bash
+# Create dev version branch
+git checkout main
+git pull origin main
+git checkout -b bump-dev-version
+
+# Update versions to 0.(X+1).0-dev
+# Edit: pyproject.toml, opc_replay/__init__.py
+
+# Verify and commit
+./scripts/check_version_sync.sh
+git add -A
+git commit -m "Bump version to 0.(X+1).0-dev"
+
+# Push and create PR
+git push origin bump-dev-version
+# Create PR on GitHub: bump-dev-version → main
+```
+
+**7. Post-Release Tasks**
 - Announce release (if applicable)
 - Close related issues/milestones
 - Update external documentation if needed
@@ -637,12 +658,19 @@ git push origin main
 
 ### Branch Protection & PR Workflow
 
-**IMPORTANT:** The `main` branch should be protected to require PR reviews:
+**IMPORTANT:** The `main` branch is protected and requires PR reviews:
 
 - All changes must go through Pull Requests (no direct pushes)
 - Require at least 1 approval (configure in GitHub settings)
 - Require status checks to pass (CI workflow)
-- Only tags are allowed to be pushed directly (for releases)
+- Tags can be pushed directly after the release PR is merged
+
+**Release Workflow with Branch Protection:**
+1. Create feature/release branch from `main`
+2. Make changes and commit
+3. Push branch and create PR to `main`
+4. Get approval and merge PR
+5. For releases: checkout `main`, pull, tag, push tag
 
 **Setup Branch Protection** (repo admins only):
 1. GitHub repo → Settings → Branches
@@ -732,19 +760,42 @@ git revert HEAD  # or git reset --hard HEAD~1 if not pushed
 - Mark bad version as "yanked" on PyPI (removes from default search)
 - Document in CHANGELOG.md
 
-### Manual Release (Fallback)
+### Troubleshooting Releases
 
-If the script fails, follow [RELEASE_PROCESS.md](../RELEASE_PROCESS.md) for manual steps.
+**Version mismatch detected by CI:**
+```bash
+./scripts/check_version_sync.sh  # See what's wrong
+# Manually sync opc_replay/__init__.py with pyproject.toml
+```
 
-Key manual steps:
-1. Update `pyproject.toml` version
-2. Update `opc_replay/__init__.py` `__version__`
-3. Update `CHANGELOG.md` with version and date
-4. Commit: `git commit -m "Release vX.Y.Z"`
-5. Tag: `git tag -a vX.Y.Z -m "Release vX.Y.Z"`
-6. Push: `git push origin HEAD && git push origin vX.Y.Z`
-7. Create GitHub Release
-8. Bump to dev version: `X.(Y+1).0-dev`
+**Pre-release check fails:**
+- Check the GitHub Actions log
+- Common issues: missing CHANGELOG entry, version mismatch
+- Fix in release branch, update PR, re-merge
+- If tag was pushed, delete and recreate: `git tag -d vX.Y.Z && git push origin :refs/tags/vX.Y.Z`
+- After fix merged, re-tag on main: `git checkout main && git pull && git tag -a vX.Y.Z -m "Release vX.Y.Z" && git push origin vX.Y.Z`
+
+**Need to abort release after tagging:**
+```bash
+# Delete local tag
+git tag -d vX.Y.Z
+
+# Delete remote tag (if pushed)
+git push origin :refs/tags/vX.Y.Z
+
+# If needed, revert the release PR merge via GitHub UI
+```
+
+**PyPI publish failed:**
+- Check [publish workflow](workflows/publish.yml) logs
+- Manual publish: `uv run python -m build && twine upload dist/*`
+- Set up PyPI token in GitHub secrets if trusted publishing fails
+
+**Wrong version released:**
+- Cannot delete PyPI releases (immutable)
+- Immediately release corrected version with patch bump
+- Mark bad version as "yanked" on PyPI (removes from default search)
+- Document in CHANGELOG.md
 
 ### Copilot Assistance for Releases
 
@@ -752,19 +803,26 @@ Key manual steps:
 
 1. **Verify pre-release checklist** - Check if all items are satisfied
 2. **Run validation** - Execute `./scripts/run_ci_locally.sh`
-3. **Guide through script** - Explain each step of `prepare_release.sh`
-4. **Review changelog** - Ensure format follows Keep a Changelog conventions
-5. **Check version consistency** - Run `./scripts/check_version_sync.sh`
-6. **Validate semantic versioning** - Confirm version bump type matches changes
-7. **Monitor workflows** - Check GitHub Actions status after pushing
-8. **Verify PyPI** - Confirm package appears on PyPI with correct version
-9. **Test installation** - Guide user through fresh install test
+3. **Guide through manual PR-based workflow** - Follow the branch protection workflow (release branch → PR → merge → tag on main → dev version branch → PR)
+4. **Create release branches** - Use naming convention `release/v0.X.Y` and `bump-dev-version`
+5. **Update files correctly** - Modify pyproject.toml, __init__.py, and CHANGELOG.md with proper formatting
+6. **Review changelog** - Ensure format follows Keep a Changelog conventions
+7. **Check version consistency** - Run `./scripts/check_version_sync.sh` after each version update
+8. **Validate semantic versioning** - Confirm version bump type matches changes (breaking = minor, fixes = patch in 0.x)
+9. **Create commits** - Use conventional messages: "Release v0.X.Y" and "Bump version to 0.X.Y-dev"
+10. **Guide PR creation** - Remind user to push branches and create PRs before tagging
+11. **Monitor workflows** - Check GitHub Actions status after tag is pushed
+12. **Verify PyPI** - Confirm package appears on PyPI with correct version after release
+13. **Test installation** - Guide user through fresh install test
 
 **Copilot should NOT:**
-- Automatically push tags without user confirmation
+- Push to `main` directly (violates branch protection)
+- Create tags before the release PR is merged
+- Automatically push branches/tags without user confirmation
 - Skip validation checks to "save time"
 - Make manual changelog edits without user review
 - Proceed with release if CI checks fail
+- Use the `prepare_release.sh` script (it assumes direct push access to main)
 
 ## Quick Reference
 

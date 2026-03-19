@@ -2,6 +2,12 @@
 #
 # Release Preparation Script for OPC Replay
 #
+# ⚠️  WARNING: This script currently assumes direct push access to main branch.
+# ⚠️  If branch protection is enabled (requiring PRs), this script will fail.
+# ⚠️  
+# ⚠️  With branch protection, follow the manual PR-based workflow documented in:
+# ⚠️  .github/copilot-instructions.md (Release Management Workflow section)
+#
 # This script automates the mechanical parts of the release process while
 # providing validation checkpoints for human review. It handles:
 # - Version selection (major/minor/patch/custom for hotfixes)
