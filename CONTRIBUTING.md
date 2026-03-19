@@ -244,8 +244,8 @@ opc-replay/
 ├── opc_replay/          # Main package source code
 │   ├── __init__.py      # Package entry point (opc-replay command)
 │   ├── server.py        # OPC UA server implementation
-│   ├── client.py        # OPC UA client (opc-client command)
-│   ├── inject_tags.py   # Tag injection CLI (opc-inject command)
+│   ├── client.py        # OPC UA client (opc-replay-client command)
+│   ├── inject_tags.py   # Tag injection CLI (opc-replay-inject command)
 │   └── to_nodeset.py    # NodeSet generation utilities
 ├── tests/               # Test suite
 │   ├── unit/            # Fast unit tests with mocks

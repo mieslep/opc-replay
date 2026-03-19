@@ -52,10 +52,10 @@ The easiest way to get started - auto-generate the NodeSet from your data:
 opc-replay --data examples/simple-data.csv --ts-col TS --auto-nodeset --loop
 
 # In another terminal, monitor with the OPC client
-opc-client
+opc-replay-client
 
 # In another terminal, inject an override
-opc-inject --tag "ns=2;s=Temperature" --value 99.9 --duration 30
+opc-replay-inject --tag "ns=2;s=Temperature" --value 99.9 --duration 30
 ```
 
 ### With Pre-Generated NodeSet
@@ -105,55 +105,55 @@ opc-replay \
 - `--api-port PORT` - HTTP API port for tag injection (default: 8080, 0 to disable)
 - `--allow-non-canonical` - Allow non-canonical NodeIds without auto-conversion (advanced)
 
-### `opc-inject` - Tag Injection
+### `opc-replay-inject` - Tag Injection
 
 Override tag values in real-time while the server is running:
 
 ```bash
 # Single tag injection
-opc-inject --tag "ns=2;s=Temperature" --value 99.9 --duration 30
+opc-replay-inject --tag "ns=2;s=Temperature" --value 99.9 --duration 30
 
 # Delayed injection (starts after 10 seconds)
-opc-inject --tag "ns=2;s=Pressure" --value 200.5 --offset 10 --duration 20
+opc-replay-inject --tag "ns=2;s=Pressure" --value 200.5 --offset 10 --duration 20
 
 # Batch injection from file
-opc-inject --file injections.json
+opc-replay-inject --file injections.json
 
 # List active overrides
-opc-inject --list
+opc-replay-inject --list
 
 # Clear all overrides
-opc-inject --clear
+opc-replay-inject --clear
 ```
 
-### `opc-client` - Monitoring Client
+### `opc-replay-client` - Monitoring Client
 
 Connect to an OPC UA server and monitor tag changes with multiple monitoring modes and output formats:
 
 ```bash
 # Subscribe to all changes (default - push-based, efficient)
-opc-client
+opc-replay-client
 
 # Connect to remote server
-opc-client --endpoint opc.tcp://192.168.1.100:4840/
+opc-replay-client --endpoint opc.tcp://192.168.1.100:4840/
 
 # Read nodemap statistics and exit
-opc-client --read-nodemap --all-namespaces
+opc-replay-client --read-nodemap --all-namespaces
 
 # CSV output with periodic summaries
-opc-client --format csv --report-frequency 30 > output.csv
+opc-replay-client --format csv --report-frequency 30 > output.csv
 
 # JSON output
-opc-client --format json > output.json
+opc-replay-client --format json > output.json
 
 # Polling mode (legacy - periodic reads)
-opc-client --read-mode poll --poll-interval 2.0
+opc-replay-client --read-mode poll --poll-interval 2.0
 
 # Show connection statistics
-opc-client --show-stats --report-frequency 15
+opc-replay-client --show-stats --report-frequency 15
 
 # Monitor specific namespace
-opc-client --namespace 2
+opc-replay-client --namespace 2
 ```
 
 **Monitoring Modes:**
@@ -273,8 +273,8 @@ curl -X DELETE http://localhost:8080/inject
          ├──────────────────────┬─────────────────────┐
          ▼                      ▼                     ▼
 ┌─────────────────┐    ┌─────────────────┐   ┌─────────────────┐
-│   opc-client    │    │   opc-inject    │   │  OPC UA Client  │
-│  (Monitor)      │    │   (Control)     │   │ (UAExpert, etc) │
+│ opc-replay-     │    │ opc-replay-     │   │  OPC UA Client  │
+│   client        │    │   inject        │   │ (UAExpert, etc) │
 └─────────────────┘    └─────────────────┘   └─────────────────┘
 ```
 

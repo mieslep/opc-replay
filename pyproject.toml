@@ -33,8 +33,8 @@ dev = [
 
 [project.scripts]
 opc-replay = "opc_replay:main"
-opc-inject = "opc_replay.inject_tags:main"
-opc-client = "opc_replay.client:main"
+opc-replay-inject = "opc_replay.inject_tags:main"
+opc-replay-client = "opc_replay.client:main"
 
 [project.urls]
 Homepage = "https://github.com/mieslep/opc-replay"

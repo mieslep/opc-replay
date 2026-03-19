@@ -12,34 +12,34 @@ Supports two monitoring modes:
 Usage examples:
 
   # Subscribe to changes in all namespaces (default mode)
-  opc-client
+  opc-replay-client
 
   # Monitor specific namespace
-  opc-client --namespace 2
+  opc-replay-client --namespace 2
 
   # Monitor by namespace URI
-  opc-client --namespace-uri "http://example.com/simple"
+  opc-replay-client --namespace-uri "http://example.com/simple"
 
   # Use polling mode instead of subscriptions
-  opc-client --read-mode poll --poll-interval 2.0
+  opc-replay-client --read-mode poll --poll-interval 2.0
 
   # Read nodemap statistics and exit
-  opc-client --read-nodemap
+  opc-replay-client --read-nodemap
 
   # Browse all namespaces
-opc-client --all-namespaces
+  opc-replay-client --all-namespaces
 
   # Output as CSV
-  opc-client --format csv > output.csv
+  opc-replay-client --format csv > output.csv
 
   # Quiet mode with periodic summaries
-  opc-client --report-frequency 30
+  opc-replay-client --report-frequency 30
 
   # Show connection statistics
-  opc-client --show-stats --report-frequency 15
+  opc-replay-client --show-stats --report-frequency 15
 
   # Connect to remote server
-  opc-client --endpoint opc.tcp://192.168.1.100:4840/
+  opc-replay-client --endpoint opc.tcp://192.168.1.100:4840/
 """
 
 import argparse

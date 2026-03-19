@@ -87,7 +87,7 @@ You can still run the tests with your own server if preferred:
 
 ```bash
 # Start your server in one terminal
-opc-replay --data examples/simple-data.csv --ts-col TS --auto-nodeset --loop --speed 10
+uv run opc-replay --data examples/simple-data.csv --ts-col TS --auto-nodeset --loop --speed 10
 
 # Run tests in another terminal (will use existing server)
 uv run pytest tests/integration/ -v -s

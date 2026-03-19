@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 ### Changed
+- **BREAKING:** Renamed CLI commands for namespace consistency: `opc-inject` → `opc-replay-inject` and `opc-client` → `opc-replay-client`. The main server command `opc-replay` remains unchanged.
 
 ### Fixed
 
@@ -40,18 +41,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Real-Time Tag Injection** - HTTP REST API for overriding tag values on-the-fly
   - Single and batch tag injection support
   - Time-delayed activation with configurable duration
-  - `opc-inject` CLI tool for easy override management
+  - `opc-replay-inject` CLI tool for easy override management
 - **OPC Client Monitor** - First-class monitoring command
   - Auto-discover namespaces and variables
   - Real-time tag value monitoring
-  - `opc-client` CLI tool
+  - `opc-replay-client` CLI tool
 - **Robust OPC UA Compliance**
   - Proper SourceTimestamp and ServerTimestamp handling
   - Type inference and casting
   - Graceful error handling for invalid NodeIds
 
 ### Package Structure
-- Entry points: `opc-replay`, `opc-inject`, `opc-client`
+- Entry points: `opc-replay`, `opc-replay-inject`, `opc-replay-client`
 - Comprehensive test suite (unit and integration tests)
 - Example data files and demonstration scripts
 - CI/CD with GitHub Actions
