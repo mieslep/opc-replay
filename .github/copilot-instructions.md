@@ -571,7 +571,7 @@ Follow the interactive prompts:
 - Confirm push to GitHub
 
 **2. Monitor GitHub Actions**
-- Wait for [pre-release-check workflow](.github/workflows/pre-release-check.yml) to complete
+- Wait for [pre-release-check workflow](workflows/pre-release-check.yml) to complete
 - This validates version consistency and changelog
 - If it fails, fix issues and re-tag
 
@@ -580,7 +580,7 @@ Follow the interactive prompts:
 *If using automated script with gh CLI:*
 - The script will offer to create the release automatically after pushing the tag
 - It extracts the changelog section and creates the release with proper title and notes
-- Publishing triggers [publish workflow](.github/workflows/publish.yml) → uploads to PyPI
+- Publishing triggers [publish workflow](workflows/publish.yml) → uploads to PyPI
 
 *If creating manually:*
 - Go to GitHub → Releases → "Draft a new release"
@@ -588,7 +588,7 @@ Follow the interactive prompts:
 - Copy changelog entry for this version as the description
 - Title: `Release v0.11.0`
 - Click "Publish release"
-- This triggers [publish workflow](.github/workflows/publish.yml) → uploads to PyPI
+- This triggers [publish workflow](workflows/publish.yml) → uploads to PyPI
 
 **4. Verify Publication**
 - Check PyPI page: https://pypi.org/project/opc-replay/
@@ -722,7 +722,7 @@ git revert HEAD  # or git reset --hard HEAD~1 if not pushed
 ```
 
 **PyPI publish failed:**
-- Check [publish workflow](.github/workflows/publish.yml) logs
+- Check [publish workflow](workflows/publish.yml) logs
 - Manual publish: `uv run python -m build && twine upload dist/*`
 - Set up PyPI token in GitHub secrets if trusted publishing fails
 
