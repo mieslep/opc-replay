@@ -7,7 +7,7 @@ requires-python = ">=3.13"
 authors = [
     {name = "Phil", email = "phil@fortclever.com"}
 ]
-keywords = ["opcua", "opc-ua", "replay", "simulator", "industrial", "automation"]
+keywords = ["opcua", "opc-ua", "replay", "simulator", "industrial", "automation", "mqtt", "pubsub"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -27,6 +27,10 @@ dependencies = [
 dev = [
     "pytest>=9.0.2",
     "pytest-mock>=3.14.0",
+    "paho-mqtt>=2.0.0",
+]
+mqtt = [
+    "paho-mqtt>=2.0.0",
 ]
 
 [project.scripts]

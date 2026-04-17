@@ -11,7 +11,8 @@ A Python-based OPC UA replay server for replaying historical timestamped tag dat
 - 🔄 **Replay Historical Data** - CSV/Parquet files with configurable speed (1x to 100x+), offset, and loop mode
 - 🏷️ **Auto-Generate NodeSets** - Create OPC UA address space automatically from your data files
 - 🎯 **Real-Time Tag Injection** - HTTP REST API for overriding values on-the-fly with scheduled/delayed activation
-- 🛡️ **Robust & Compliant** - Proper OPC UA timestamps, namespace remapping, graceful error handling
+- � **MQTT PubSub Publishing** - Publish replayed data to MQTT brokers using OPC UA PubSub JSON format (Part 14)
+- �🛡️ **Robust & Compliant** - Proper OPC UA timestamps, namespace remapping, graceful error handling
 
 ## Installation
 
@@ -22,6 +23,14 @@ pip install opc-replay
 ```
 
 Requires Python 3.13 or later.
+
+### With MQTT Support
+
+To enable MQTT PubSub publishing:
+
+```bash
+pip install opc-replay[mqtt]
+```
 
 ### From Source (For Development)
 
@@ -105,6 +114,10 @@ opc-replay \
 - `--api-port PORT` - HTTP API port for tag injection (default: 8080, 0 to disable)
 - `--log-level LEVEL` - Logging verbosity: DEBUG, INFO (default), WARNING, ERROR
 - `--allow-non-canonical` - Allow non-canonical NodeIds without auto-conversion (advanced)
+- `--mqtt-broker HOST` - MQTT broker hostname (enables MQTT publishing)
+- `--mqtt-port PORT` - MQTT broker port (default: 1883, TLS: 8883)
+- `--mqtt-topic-prefix PREFIX` - MQTT topic prefix (default: `opcua` per OPC UA PubSub spec)
+- `--mqtt-qos N` - MQTT QoS level: 0, 1, or 2 (default: 0)
 
 ### `opc-replay-inject` - Tag Injection
 
@@ -251,6 +264,41 @@ curl http://localhost:8080/inject
 curl -X DELETE http://localhost:8080/inject
 ```
 
+## MQTT PubSub Publishing
+
+Publish replayed data to an MQTT broker using the OPC UA PubSub JSON format (OPC 10000-14):
+
+```bash
+# Install with MQTT support
+pip install opc-replay[mqtt]
+
+# Replay data and publish to MQTT
+opc-replay \
+    --data mydata.csv \
+    --ts-col TS \
+    --auto-nodeset \
+    --loop \
+    --mqtt-broker localhost \
+    --mqtt-topic-prefix opcua \
+    --mqtt-qos 1
+```
+
+Messages are published to topics following the OPC UA PubSub standard:
+`<prefix>/json/data/<publisher_id>/<writer_group>/<tag_name>`
+
+For example: `opcua/json/data/opc-replay/default/ns=2;s=Temperature`
+
+**MQTT Options:**
+- `--mqtt-broker HOST` - Broker hostname (enables MQTT publishing)
+- `--mqtt-port PORT` - Broker port (default: 1883)
+- `--mqtt-topic-prefix PREFIX` - Topic prefix (default: `opcua`)
+- `--mqtt-publisher-id ID` - Publisher ID for topics (default: server name)
+- `--mqtt-writer-group NAME` - WriterGroup name (default: `default`)
+- `--mqtt-qos N` - QoS level: 0, 1, or 2 (default: 0)
+- `--mqtt-username USER` - Broker username
+- `--mqtt-password PASS` - Broker password (prefer `MQTT_PASSWORD` env var)
+- `--mqtt-tls` - Enable TLS (use with `--mqtt-port 8883`)
+
 ## Documentation
 
 - **[examples/](examples/)** - Sample data files and demonstration scripts
@@ -271,18 +319,20 @@ curl -X DELETE http://localhost:8080/inject
 └────────┬────────┘  • Replays data at configurable speed
          │           • Exposes OPC UA endpoint
          │           • HTTP REST API for tag injection
-         ├──────────────────────┬─────────────────────┐
-         ▼                      ▼                     ▼
-┌─────────────────┐    ┌─────────────────┐   ┌─────────────────┐
-│ opc-replay-     │    │ opc-replay-     │   │  OPC UA Client  │
-│   client        │    │   inject        │   │ (UAExpert, etc) │
-└─────────────────┘    └─────────────────┘   └─────────────────┘
+         │           • MQTT PubSub publishing (opt-in)
+         ├──────────────────────┬──────────────────┬──────────────────┐
+         ▼                      ▼                  ▼                  ▼
+┌─────────────────┐    ┌─────────────────┐ ┌──────────────┐  ┌──────────────┐
+│ opc-replay-     │    │ opc-replay-     │ │ OPC UA Client│  │ MQTT Broker  │
+│   client        │    │   inject        │ │(UAExpert etc)│  │(Mosquitto etc│
+└─────────────────┘    └─────────────────┘ └──────────────┘  └──────────────┘
 ```
 
 ## Requirements
 
 - Python >= 3.13
 - Dependencies: opcua, pandas, pyarrow (auto-installed)
+- Optional: paho-mqtt (for MQTT PubSub publishing, install with `pip install opc-replay[mqtt]`)
 
 ## Contributing
 

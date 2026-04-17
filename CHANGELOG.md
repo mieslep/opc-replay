@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **MQTT PubSub publishing (OPC UA Part 14)** - Publish replayed tag data to an MQTT broker using OPC UA PubSub JSON message format. Enable with `--mqtt-broker`. Supports configurable topic prefix, QoS, TLS, and authentication. Requires optional `paho-mqtt` dependency (`pip install opc-replay[mqtt]`).
+
 ## [0.11.0] - 2026-03-19
 
 ### Added

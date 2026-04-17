@@ -12,7 +12,8 @@ tests/
 │   ├── test_type_casting.py     # Type casting functions (42 tests)
 │   ├── test_nodeid_functions.py # NodeId validation/remapping (31 tests)
 │   ├── test_data_loading.py     # CSV/Parquet data loading (30 tests)
-│   └── test_injection_handler.py # HTTP API handler (18 tests)
+│   ├── test_injection_handler.py # HTTP API handler (18 tests)
+│   └── test_mqtt_publisher.py   # MQTT PubSub publisher (38 tests)
 └── integration/                  # Integration tests (automated server)
     ├── conftest.py              # Server lifecycle fixture
     ├── fixtures/                # Test data for integration tests
@@ -20,6 +21,9 @@ tests/
     │   └── README.md
     ├── test_client.py           # OPC UA client monitoring
     ├── test_load_logic.py       # Data loading with real files
+    ├── test_mqtt_integration.py  # MQTT PubSub integration (7 tests)
+    ├── test_load_logic.py       # Data loading with real files
+    ├── test_mqtt_integration.py  # MQTT PubSub integration (7 tests)
     └── test_override.py         # End-to-end override injection
 ```
 
@@ -93,9 +97,9 @@ uv run opc-replay --data examples/simple-data.csv --ts-col TS --auto-nodeset --l
 uv run pytest tests/integration/ -v -s
 ```
 
-The fixture detects the running server and uses it instead of starting a new one.
+The fixture detects the 80nning server and uses it instead of starting a new one.
 
-## Unit Test Coverage (142 tests)
+## Unit Test Coverage (180 tests)
 
 ### test_override_store.py (21 tests)
 **Critical** - Thread-safe tag override management
@@ -137,9 +141,32 @@ HTTP REST API for tag injection
 - GET /inject: list active overrides
 - DELETE /inject: clear all overrides
 - JSON validation and error handling
-- Path handling with/without trailing slashes
+- # test_mqtt_publisher.py (38 tests)
+MQTT PubSub publisher per OPC UA Part 14
 
-## Integration Test Coverage (3 tests)
+- MQTT topic construction (data and status topics)
+- JSON NetworkMessage and DataSetMessage formatting
+- Value serialization for all OPC UA data types
+- MqttPublisher class (connect, publish, disconnect with mocked broker)
+- Batch publishing, sequence number generation
+- DataSetWriter ID auto-assignment
+
+## Integration Test Coverage (10ailing slashes
+
+### test_mqtt_publisher.py (38 tests)
+MQTT PubSub publisher per OPC UA Part 14
+
+- MQTT topic construction (data and status topics)
+- JSON NetworkMessage and DataSetMessage formatting
+- Value serialization for all OPC UA data types
+- MqttPublisher class (connect, publish, disconnect with mocked broker)
+- Batch publishing, sequence number generation
+- DataSetWriter ID auto-assignment
+# test_mqtt_integration.py
+MQTT PubSub integration - tests CLI argument parsing, end-to-end JSON message format compliance, topic pattern validation, multi-datatype serialization, and graceful handling when paho-mqtt is missing.
+
+##
+## Integration Test Coverage (10 tests)
 
 ### test_client.py
 OPC UA client connection and tag monitoring - tests browsing namespaces, discovering variables, and polling for value changes.
@@ -149,6 +176,9 @@ Data loading verification - tests CSV loading, column normalization, timestamp p
 
 ### test_override.py
 End-to-end override injection workflow - tests reading from OPC UA, injecting overrides via HTTP API, verifying values appear, and checking expiration.
+
+### test_mqtt_integration.py
+MQTT PubSub integration - tests CLI argument parsing, end-to-end JSON message format compliance, topic pattern validation, multi-datatype serialization, and graceful handling when paho-mqtt is missing.
 
 ## Key Testing Patterns
 
@@ -182,7 +212,7 @@ def test_timing(override_store, mocker):
     current_time = [1000000.0]
     mocker.patch("time.time", side_effect=lambda: current_time[0])
     # Advance time manually
-    current_time[0] += 10
+    current_ti2970] += 10
 ```
 
 ## Fixtures
@@ -197,7 +227,7 @@ See [conftest.py](conftest.py) for available fixtures:
 
 ## Test Results
 
-Latest run: **142 tests passed** (100% success rate)
+Latest run: **297 tests passed** (100% success rate)
 
 - test_data_loading.py: 31 passed
 - test_injection_handler.py: 18 passed  

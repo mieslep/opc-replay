@@ -774,6 +774,62 @@ def main():
         help="Sort data by timestamp and save sorted file (creates <filename>_sorted.csv or .parquet). Use once to preprocess data for faster subsequent runs. Assumes data is already sorted by default.",
     )
 
+    # MQTT PubSub publishing (OPC UA Part 14):
+    mqtt_group = ap.add_argument_group(
+        "MQTT PubSub",
+        "Publish replayed data to an MQTT broker using OPC UA PubSub JSON format "
+        "(OPC 10000-14). All MQTT options are opt-in; the server works without them.",
+    )
+    mqtt_group.add_argument(
+        "--mqtt-broker",
+        default=None,
+        help="MQTT broker hostname or IP (e.g., localhost). Enables MQTT publishing.",
+    )
+    mqtt_group.add_argument(
+        "--mqtt-port",
+        type=int,
+        default=1883,
+        help="MQTT broker port (default: 1883, TLS: 8883)",
+    )
+    mqtt_group.add_argument(
+        "--mqtt-topic-prefix",
+        default="opcua",
+        help="MQTT topic prefix (default: 'opcua' per OPC UA PubSub spec)",
+    )
+    mqtt_group.add_argument(
+        "--mqtt-publisher-id",
+        default=None,
+        help="Publisher ID for MQTT topics and messages (default: --server-name value)",
+    )
+    mqtt_group.add_argument(
+        "--mqtt-writer-group",
+        default="default",
+        help="WriterGroup name for MQTT topics (default: 'default')",
+    )
+    mqtt_group.add_argument(
+        "--mqtt-qos",
+        type=int,
+        default=0,
+        choices=[0, 1, 2],
+        help="MQTT QoS level: 0=AtMostOnce, 1=AtLeastOnce, 2=ExactlyOnce (default: 0)",
+    )
+    mqtt_group.add_argument(
+        "--mqtt-username",
+        default=None,
+        help="MQTT broker username (optional)",
+    )
+    mqtt_group.add_argument(
+        "--mqtt-password",
+        default=None,
+        help="MQTT broker password (optional, visible in process list - "
+        "prefer MQTT_PASSWORD env var for production)",
+    )
+    mqtt_group.add_argument(
+        "--mqtt-tls",
+        action="store_true",
+        help="Enable TLS for MQTT connection (use with --mqtt-port 8883)",
+    )
+
     args = ap.parse_args()
 
     # Configure logging based on --log-level
@@ -1004,6 +1060,40 @@ def main():
     # Pre-compute: if ns_map is identity (all indices unchanged), skip regex on every row
     _ns_identity = all(k == v for k, v in ns_map.items())
 
+    # Start MQTT publisher if broker is specified
+    mqtt_publisher = None
+    if args.mqtt_broker:
+        try:
+            from .mqtt_publisher import MqttPublisher
+
+            mqtt_pub_id = args.mqtt_publisher_id or args.server_name
+            mqtt_password = args.mqtt_password or os.environ.get("MQTT_PASSWORD")
+            mqtt_publisher = MqttPublisher(
+                broker=args.mqtt_broker,
+                port=args.mqtt_port,
+                publisher_id=mqtt_pub_id,
+                topic_prefix=args.mqtt_topic_prefix,
+                writer_group_name=args.mqtt_writer_group,
+                qos=args.mqtt_qos,
+                username=args.mqtt_username,
+                password=mqtt_password,
+                tls=args.mqtt_tls,
+            )
+            mqtt_publisher.connect()
+            logger.info(
+                "[MQTT] Publishing to %s:%d (prefix=%s, publisher=%s)",
+                args.mqtt_broker,
+                args.mqtt_port,
+                args.mqtt_topic_prefix,
+                mqtt_pub_id,
+            )
+        except ImportError as e:
+            logger.error("[MQTT] %s", e)
+            logger.error("[MQTT] MQTT publishing disabled - install paho-mqtt to enable")
+        except ConnectionError as e:
+            logger.error("[MQTT] %s", e)
+            logger.error("[MQTT] MQTT publishing disabled - could not connect to broker")
+
     # Start the tag-injection HTTP API + background override applier
     override_store = OverrideStore()
     httpd = None
@@ -1072,6 +1162,18 @@ def main():
                     node.set_value(dv)
                     written += 1
 
+                    # Publish to MQTT if enabled
+                    if mqtt_publisher is not None:
+                        try:
+                            mqtt_publisher.publish_data_change(
+                                tagname=tagname,
+                                value=raw_val,
+                                datatype=dtype,
+                                timestamp=ts.to_pydatetime(),
+                            )
+                        except Exception as mqtt_ex:
+                            logger.debug("[MQTT publish error] %s: %s", tagname, mqtt_ex)
+
                 except Exception as ex:
                     skipped += 1
                     logger.warning("[SKIP write failure] %s @ %s (%s)", tagname, ts.isoformat(), ex)
@@ -1091,6 +1193,8 @@ def main():
 
     finally:
         _applier_stop.set()
+        if mqtt_publisher is not None:
+            mqtt_publisher.disconnect()
         if httpd:
             httpd.shutdown()
         server.stop()
